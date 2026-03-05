@@ -11,7 +11,11 @@ const PUERTO = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [
+    'https://crmkummo.vercel.app',
+    process.env.FRONTEND_URL || 'http://localhost:3000',
+    'http://localhost:3002'
+  ],
   credentials: true
 }));
 app.use(express.json());

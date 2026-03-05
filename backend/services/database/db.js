@@ -77,6 +77,22 @@ async function inicializarDB() {
       )
     `);
 
+    await cliente.query(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        lead_id TEXT,
+        contact_name TEXT,
+        mensaje_cliente TEXT,
+        respuesta_bot TEXT,
+        timestamp TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await cliente.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_conversations_lead_id ON conversations(lead_id);
+    `);
+
     // Prompt del sistema por defecto
     await cliente.query(`
       INSERT INTO configuracion (clave, valor, descripcion)
