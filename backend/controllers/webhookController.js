@@ -10,26 +10,44 @@ async function manejarWebhook(req, res) {
     const cuerpo = req.body;
     console.log('[WEBHOOK] Datos recibidos:', JSON.stringify(cuerpo, null, 2));
 
-    // Extraer campos desde message.add[0]
-    const msgObj = cuerpo?.message?.add?.[0];
+    // --- Formato 1: Twilio / WhatsApp (message.add) ---
+    const msgTwilio = cuerpo?.message?.add?.[0];
 
-    // Ignorar solo mensajes salientes del bot
-    if (msgObj?.type === 'outgoing') {
-      console.log('[WEBHOOK] Mensaje saliente del bot, ignorando');
+    // --- Formato 2: Nota Kommo (leads.note) ---
+    const notaKommo = cuerpo?.leads?.note?.[0]?.note;
+
+    let textoMensaje = null;
+    let leadId = '';
+    let autorNombre = null;
+
+    if (msgTwilio) {
+      // Ignorar mensajes salientes del bot
+      if (msgTwilio.type === 'outgoing') {
+        console.log('[WEBHOOK] Mensaje saliente del bot, ignorando');
+        return;
+      }
+      textoMensaje = msgTwilio.text;
+      leadId = String(msgTwilio.element_id || msgTwilio.entity_id || msgTwilio.lead_id || '');
+      autorNombre = msgTwilio.author?.name || null;
+      console.log('[WEBHOOK] Formato Twilio detectado');
+
+    } else if (notaKommo) {
+      // Solo procesar notas de tipo 4 (nota común) — ignorar emails, llamadas, etc.
+      if (notaKommo.note_type !== '4') {
+        console.log(`[WEBHOOK] Nota tipo ${notaKommo.note_type}, ignorando`);
+        return;
+      }
+      textoMensaje = notaKommo.text;
+      leadId = String(notaKommo.element_id || '');
+      console.log('[WEBHOOK] Formato nota Kommo detectado');
+
+    } else {
+      console.log('[WEBHOOK] Formato de payload no reconocido, ignorando');
       return;
     }
 
-    const textoMensaje = msgObj?.text;
-    // Twilio usa element_id / entity_id — Kommo nativo usa lead_id
-    const leadId = String(
-      msgObj?.element_id || msgObj?.entity_id || msgObj?.lead_id ||
-      cuerpo?.leads?.note?.[0]?.lead_id || ''
-    );
-    const contactId = String(msgObj?.contact_id || '');
-    const autorNombre = msgObj?.author?.name || null;
-
     if (!textoMensaje) {
-      console.log('[WEBHOOK] Sin mensaje en el payload, ignorando');
+      console.log('[WEBHOOK] Sin texto en el mensaje, ignorando');
       return;
     }
 
