@@ -1,7 +1,8 @@
 const axios = require('axios');
 
+const _subdomain = process.env.KOMMO_SUBDOMAIN || '';
 const BASE_URL = process.env.KOMMO_BASE_URL
-  || `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com`;
+  || (_subdomain.includes('.') ? `https://${_subdomain}` : `https://${_subdomain}.kommo.com`);
 const TOKEN = process.env.KOMMO_ACCESS_TOKEN || process.env.KOMMO_TOKEN;
 
 const headers = () => ({

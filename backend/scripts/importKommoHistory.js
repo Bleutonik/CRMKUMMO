@@ -3,8 +3,9 @@ const axios = require('axios');
 const { Pool } = require('pg');
 
 // ─── Configuración ───────────────────────────────────────────────────────────
+const _sub = process.env.KOMMO_SUBDOMAIN || '';
 const KOMMO_BASE_URL = process.env.KOMMO_BASE_URL
-  || (process.env.KOMMO_SUBDOMAIN ? `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com` : null);
+  || (_sub ? (_sub.includes('.') ? `https://${_sub}` : `https://${_sub}.kommo.com`) : null);
 const KOMMO_TOKEN    = process.env.KOMMO_ACCESS_TOKEN || process.env.KOMMO_TOKEN;
 const DATABASE_URL   = process.env.DATABASE_URL;
 
