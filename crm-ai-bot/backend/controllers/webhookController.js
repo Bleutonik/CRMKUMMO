@@ -57,7 +57,7 @@ async function manejarWebhook(req, res) {
     }
 
     console.log(`Mensaje recibido: ${textoMensaje}`);
-    console.log(`[WEBHOOK] Lead ID: ${leadId} | Contact ID: ${contactId}`);
+    console.log(`[WEBHOOK] Lead ID: ${leadId}`);
 
     // Obtener nombre del contacto
     let contactName = autorNombre;
