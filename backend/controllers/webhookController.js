@@ -21,9 +21,22 @@ async function manejarWebhook(req, res) {
 
     // Extraer campos desde message.add[0]
     const msgObj = cuerpo?.message?.add?.[0];
+
+    // Solo procesar mensajes entrantes (ignorar los que envía el bot)
+    if (msgObj?.type !== 'incoming') {
+      console.log(`[WEBHOOK] Mensaje tipo "${msgObj?.type}", ignorando`);
+      return;
+    }
+
     const textoMensaje = msgObj?.text;
-    const leadId = String(msgObj?.lead_id || cuerpo?.leads?.note?.[0]?.lead_id || '');
+    // Twilio usa element_id / entity_id — Kommo nativo usa lead_id
+    const leadId = String(
+      msgObj?.element_id || msgObj?.entity_id || msgObj?.lead_id ||
+      cuerpo?.leads?.note?.[0]?.lead_id || ''
+    );
     const contactId = String(msgObj?.contact_id || '');
+    // Nombre del autor si viene en el payload (Twilio lo incluye)
+    const autorNombre = msgObj?.author?.name || null;
 
     if (!textoMensaje) {
       console.log('[WEBHOOK] Sin mensaje en el payload, ignorando');
@@ -35,20 +48,14 @@ async function manejarWebhook(req, res) {
       return;
     }
 
-    // Ignorar respuestas del propio bot
-    if (textoMensaje.startsWith('🤖 Asistente IA:')) {
-      console.log('[WEBHOOK] Mensaje del bot, ignorando para evitar bucle');
-      return;
-    }
-
     console.log(`Mensaje recibido: ${textoMensaje}`);
     console.log(`[WEBHOOK] Lead ID: ${leadId} | Contact ID: ${contactId}`);
 
-    // Obtener nombre del contacto
-    let contactName = null;
+    // Obtener nombre del contacto (primero del payload, luego de Kommo API)
+    let contactName = autorNombre;
     try {
       const infoContacto = await obtenerContactoLead(leadId);
-      contactName = infoContacto.nombre || null;
+      contactName = infoContacto.nombre || autorNombre || null;
     } catch {}
 
     // Insertar en tabla conversations (sin respuesta_bot todavía)
