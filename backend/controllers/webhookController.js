@@ -10,18 +10,22 @@ async function manejarWebhook(req, res) {
     const cuerpo = req.body;
     console.log('[WEBHOOK] Datos recibidos:', JSON.stringify(cuerpo, null, 2));
 
-    // Extraer datos de la nota según formato de Kommo
-    const nota = cuerpo?.leads?.note?.[0];
-    if (!nota) {
-      console.log('[WEBHOOK] Sin nota en el payload, ignorando');
+    // Extraer mensaje según formato de Kommo (message.add)
+    const textoNota = cuerpo?.message?.add?.[0]?.text;
+
+    if (!textoNota) {
+      console.log('[WEBHOOK] Sin mensaje en el payload, ignorando');
       return;
     }
 
-    const textoNota = nota.note?.text;
-    const leadId = nota.lead_id || nota.note?.entity_id;
+    console.log(`Mensaje recibido: ${textoNota}`);
 
-    if (!textoNota || !leadId) {
-      console.log('[WEBHOOK] Nota sin texto o sin lead_id, ignorando');
+    // Extraer lead_id desde message.add o fallback a leads.note
+    const mensajeObj = cuerpo?.message?.add?.[0];
+    const leadId = mensajeObj?.lead_id || cuerpo?.leads?.note?.[0]?.lead_id;
+
+    if (!leadId) {
+      console.log('[WEBHOOK] Sin lead_id en el payload, ignorando');
       return;
     }
 
