@@ -1,7 +1,8 @@
 const axios = require('axios');
 
-const BASE_URL = process.env.KOMMO_BASE_URL; // ej: https://tudominio.kommo.com
-const TOKEN = process.env.KOMMO_TOKEN;
+const BASE_URL = process.env.KOMMO_BASE_URL
+  || `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com`;
+const TOKEN = process.env.KOMMO_ACCESS_TOKEN || process.env.KOMMO_TOKEN;
 
 const headers = () => ({
   'Authorization': `Bearer ${TOKEN}`,

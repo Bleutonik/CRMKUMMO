@@ -17,9 +17,13 @@ async function importarHistorial(req, res) {
 
   console.log('[IMPORT] Iniciando importación del historial de Kommo...');
 
+  const kommoBaseUrl = process.env.KOMMO_BASE_URL
+    || `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com`;
+  const kommoToken = process.env.KOMMO_ACCESS_TOKEN || process.env.KOMMO_TOKEN;
+
   const http = axios.create({
-    baseURL: process.env.KOMMO_BASE_URL,
-    headers: { Authorization: `Bearer ${process.env.KOMMO_TOKEN}` },
+    baseURL: kommoBaseUrl,
+    headers: { Authorization: `Bearer ${kommoToken}` },
     timeout: 15000
   });
 

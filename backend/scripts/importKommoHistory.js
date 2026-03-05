@@ -3,12 +3,13 @@ const axios = require('axios');
 const { Pool } = require('pg');
 
 // ─── Configuración ───────────────────────────────────────────────────────────
-const KOMMO_BASE_URL = process.env.KOMMO_BASE_URL;
-const KOMMO_TOKEN    = process.env.KOMMO_TOKEN;
+const KOMMO_BASE_URL = process.env.KOMMO_BASE_URL
+  || (process.env.KOMMO_SUBDOMAIN ? `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com` : null);
+const KOMMO_TOKEN    = process.env.KOMMO_ACCESS_TOKEN || process.env.KOMMO_TOKEN;
 const DATABASE_URL   = process.env.DATABASE_URL;
 
 if (!KOMMO_BASE_URL || !KOMMO_TOKEN || !DATABASE_URL) {
-  console.error('❌ Faltan variables de entorno: KOMMO_BASE_URL, KOMMO_TOKEN, DATABASE_URL');
+  console.error('❌ Faltan variables de entorno: KOMMO_SUBDOMAIN (o KOMMO_BASE_URL), KOMMO_ACCESS_TOKEN, DATABASE_URL');
   process.exit(1);
 }
 
