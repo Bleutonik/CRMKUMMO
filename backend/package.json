@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "migrate": "node services/database/migrate.js"
+    "migrate": "node services/database/migrate.js",
+    "import:kommo": "node scripts/importKommoHistory.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",
