@@ -39,12 +39,30 @@ async function obtenerHistorialConversacion(kommoLeadId, limite = 10) {
   }
 }
 
+async function obtenerConocimiento() {
+  try {
+    const resultado = await pool.query(
+      'SELECT pregunta, respuesta, categoria FROM conocimiento WHERE activo = TRUE ORDER BY categoria'
+    );
+    if (resultado.rows.length === 0) return '';
+    const entradas = resultado.rows.map(r =>
+      `[${r.categoria.toUpperCase()}] P: ${r.pregunta}\nR: ${r.respuesta}`
+    ).join('\n\n');
+    return `\n\n--- BASE DE CONOCIMIENTO ---\n${entradas}\n--- FIN BASE DE CONOCIMIENTO ---`;
+  } catch {
+    return '';
+  }
+}
+
 async function generarRespuesta(mensajeCliente, kommoLeadId, contextoLead = {}) {
   const inicio = Date.now();
 
   try {
-    const promptSistema = await obtenerPromptSistema();
-    const historial = await obtenerHistorialConversacion(kommoLeadId);
+    const [promptSistema, historial, conocimiento] = await Promise.all([
+      obtenerPromptSistema(),
+      obtenerHistorialConversacion(kommoLeadId),
+      obtenerConocimiento()
+    ]);
 
     // Construir contexto del lead si existe
     let contextoTexto = '';
@@ -62,7 +80,7 @@ async function generarRespuesta(mensajeCliente, kommoLeadId, contextoLead = {}) 
     const respuesta = await cliente.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
-      system: promptSistema + contextoTexto,
+      system: promptSistema + contextoTexto + conocimiento,
       messages: mensajes
     });
 

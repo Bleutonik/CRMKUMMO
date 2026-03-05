@@ -65,6 +65,18 @@ async function inicializarDB() {
       )
     `);
 
+    await cliente.query(`
+      CREATE TABLE IF NOT EXISTS conocimiento (
+        id SERIAL PRIMARY KEY,
+        pregunta TEXT NOT NULL,
+        respuesta TEXT NOT NULL,
+        categoria VARCHAR(100) DEFAULT 'general',
+        activo BOOLEAN DEFAULT TRUE,
+        creado_en TIMESTAMP DEFAULT NOW(),
+        actualizado_en TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
     // Prompt del sistema por defecto
     await cliente.query(`
       INSERT INTO configuracion (clave, valor, descripcion)
@@ -73,6 +85,13 @@ async function inicializarDB() {
         'Eres un asistente de ventas profesional y amigable para una empresa de tours en barco. Tu objetivo es ayudar a los clientes con información sobre tours disponibles, precios, disponibilidad y reservas. Responde siempre en el mismo idioma que el cliente. Sé conciso, útil y orientado a cerrar la venta. Si no tienes información específica, ofrece conectar al cliente con un agente humano.',
         'Prompt principal del asistente IA'
       )
+      ON CONFLICT (clave) DO NOTHING
+    `);
+
+    // Estado del bot por defecto
+    await cliente.query(`
+      INSERT INTO configuracion (clave, valor, descripcion)
+      VALUES ('bot_activo', 'true', 'Estado del bot (true/false)')
       ON CONFLICT (clave) DO NOTHING
     `);
 

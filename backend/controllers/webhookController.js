@@ -10,6 +10,15 @@ async function manejarWebhook(req, res) {
     const cuerpo = req.body;
     console.log('[WEBHOOK] Datos recibidos:', JSON.stringify(cuerpo, null, 2));
 
+    // Verificar si el bot está activo
+    const estadoBot = await pool.query(
+      "SELECT valor FROM configuracion WHERE clave = 'bot_activo'"
+    );
+    if (estadoBot.rows[0]?.valor !== 'true') {
+      console.log('[WEBHOOK] Bot inactivo, ignorando mensaje');
+      return;
+    }
+
     // Extraer mensaje según formato de Kommo (message.add)
     const textoNota = cuerpo?.message?.add?.[0]?.text;
 
