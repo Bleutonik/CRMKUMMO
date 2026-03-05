@@ -28,6 +28,9 @@ export default function TrainingPage() {
   const [enviando, setEnviando] = useState(false);
   const [eliminando, setEliminando] = useState(null);
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
+  const [importando, setImportando] = useState(false);
+  const [extrayendo, setExtrayendo] = useState(false);
+  const [adminMsg, setAdminMsg] = useState(null);
   const [exito, setExito] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -84,8 +87,78 @@ export default function TrainingPage() {
       <div className="mb-8">
         <h1 className="text-xl font-semibold text-white">Entrenamiento del Bot</h1>
         <p className="text-sm text-muted mt-1">
-          Agrega preguntas y respuestas para que el bot tenga conocimiento de tu negocio.
+          Agrega conocimiento manualmente o importa el historial desde Kommo.
         </p>
+      </div>
+
+      {/* Panel de importación desde Kommo */}
+      <div className="card mb-8">
+        <h2 className="text-sm font-semibold text-white mb-1">Importar desde Kommo</h2>
+        <p className="text-xs text-muted mb-5">
+          Paso 1: importa el historial de conversaciones. Paso 2: extrae conocimiento automáticamente con IA.
+        </p>
+
+        <div className="flex flex-wrap gap-3">
+          {/* Paso 1 */}
+          <button
+            onClick={async () => {
+              setImportando(true);
+              setAdminMsg(null);
+              try {
+                await api.importarKommo();
+                setAdminMsg({ tipo: 'ok', texto: 'Importación iniciada en el servidor. Puede tardar varios minutos. Revisa los logs de Railway para ver el progreso.' });
+              } catch (e) {
+                setAdminMsg({ tipo: 'error', texto: `Error: ${e.message}` });
+              }
+              setImportando(false);
+            }}
+            disabled={importando || extrayendo}
+            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importando ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                Iniciando...
+              </span>
+            ) : '1. Importar historial de Kommo'}
+          </button>
+
+          {/* Paso 2 */}
+          <button
+            onClick={async () => {
+              setExtrayendo(true);
+              setAdminMsg(null);
+              try {
+                await api.extraerKnowledge();
+                setAdminMsg({ tipo: 'ok', texto: 'Extracción iniciada. Claude está analizando las conversaciones. En unos minutos verás el conocimiento aquí abajo.' });
+                // Recargar conocimiento después de 30 segundos
+                setTimeout(() => cargar(), 30000);
+              } catch (e) {
+                setAdminMsg({ tipo: 'error', texto: `Error: ${e.message}` });
+              }
+              setExtrayendo(false);
+            }}
+            disabled={importando || extrayendo}
+            className="btn-ghost disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {extrayendo ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                Iniciando...
+              </span>
+            ) : '2. Extraer conocimiento con IA'}
+          </button>
+        </div>
+
+        {adminMsg && (
+          <div className={`mt-4 px-4 py-3 rounded-lg text-sm ${
+            adminMsg.tipo === 'ok'
+              ? 'bg-success/10 border border-success/20 text-success'
+              : 'bg-danger/10 border border-danger/20 text-danger'
+          }`}>
+            {adminMsg.texto}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">

@@ -20,5 +20,7 @@ export const api = {
   knowledge:          ()         => req('/api/knowledge'),
   crearKnowledge:     (data)     => req('/api/knowledge', { method: 'POST', body: JSON.stringify(data) }),
   eliminarKnowledge:  (id)       => req(`/api/knowledge/${id}`, { method: 'DELETE' }),
-  stats:              ()         => req('/api/stats')
+  stats:              ()         => req('/api/stats'),
+  importarKommo:      ()         => req('/api/admin/import-kommo',      { method: 'POST' }),
+  extraerKnowledge:   ()         => req('/api/admin/extract-knowledge',  { method: 'POST' })
 };
