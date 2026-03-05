@@ -13,9 +13,9 @@ async function manejarWebhook(req, res) {
     // Extraer campos desde message.add[0]
     const msgObj = cuerpo?.message?.add?.[0];
 
-    // Solo procesar mensajes entrantes (ignorar los que envía el bot)
-    if (msgObj?.type !== 'incoming') {
-      console.log(`[WEBHOOK] Mensaje tipo "${msgObj?.type}", ignorando`);
+    // Ignorar solo mensajes salientes del bot
+    if (msgObj?.type === 'outgoing') {
+      console.log('[WEBHOOK] Mensaje saliente del bot, ignorando');
       return;
     }
 
