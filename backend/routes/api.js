@@ -43,4 +43,9 @@ router.get('/stats', obtenerEstadisticas);
 router.get('/configuracion', obtenerConfiguracion);
 router.post('/prompts', actualizarConfiguracion);
 
+// Admin — ejecutar scripts desde el navegador
+const { importarHistorial, extraerConocimiento } = require('../controllers/adminController');
+router.post('/admin/import-kommo', importarHistorial);
+router.post('/admin/extract-knowledge', extraerConocimiento);
+
 module.exports = router;
