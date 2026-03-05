@@ -40,10 +40,12 @@ async function importarHistorial(req, res) {
 
     let notas = [];
     try {
-      const resNotas = await http.get(`/api/v4/leads/${lead.id}/notes`, { params: { limit: 250 } });
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+      const req = http.get(`/api/v4/leads/${lead.id}/notes`, { params: { limit: 250 } });
+      const resNotas = await Promise.race([req, timeout]);
       notas = resNotas.data?._embedded?.notes || [];
       notas.sort((a, b) => a.created_at - b.created_at);
-    } catch {}
+    } catch { return { imp: 0, dup: 0 }; } // si falla o timeout, saltar este lead
 
     const tieneTipos = notas.some(n => n.note_type === 25 || n.note_type === 26);
     const pares = [];
@@ -72,19 +74,21 @@ async function importarHistorial(req, res) {
     }
 
     let imp = 0, dup = 0;
-    for (const par of pares) {
-      const timestamp = new Date(par.ts * 1000).toISOString();
-      const existe = await pool.query(
-        'SELECT id FROM conversations WHERE lead_id=$1 AND mensaje_cliente=$2 AND timestamp=$3',
-        [leadId, par.mensaje_cliente, timestamp]
-      );
-      if (existe.rows.length > 0) { dup++; continue; }
-      await pool.query(
-        'INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1,$2,$3,$4,$5)',
-        [leadId, contactName, par.mensaje_cliente, par.respuesta_bot, timestamp]
-      );
-      imp++;
-    }
+    try {
+      for (const par of pares) {
+        const timestamp = new Date(par.ts * 1000).toISOString();
+        const existe = await pool.query(
+          'SELECT id FROM conversations WHERE lead_id=$1 AND mensaje_cliente=$2 AND timestamp=$3',
+          [leadId, par.mensaje_cliente, timestamp]
+        );
+        if (existe.rows.length > 0) { dup++; continue; }
+        await pool.query(
+          'INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1,$2,$3,$4,$5)',
+          [leadId, contactName, par.mensaje_cliente, par.respuesta_bot, timestamp]
+        );
+        imp++;
+      }
+    } catch { /* error de DB, continuar */ }
     return { imp, dup };
   }
 
@@ -108,10 +112,13 @@ async function importarHistorial(req, res) {
       // Procesar en lotes de BATCH_SIZE en paralelo
       for (let i = 0; i < leads.length; i += BATCH_SIZE) {
         const lote = leads.slice(i, i + BATCH_SIZE);
-        const resultados = await Promise.all(lote.map(procesarLead));
-        for (const r of resultados) { importados += r.imp; duplicados += r.dup; }
-        await new Promise(r => setTimeout(r, 100)); // pequeña pausa entre lotes
+        const resultados = await Promise.allSettled(lote.map(procesarLead));
+        for (const r of resultados) {
+          if (r.status === 'fulfilled') { importados += r.value.imp; duplicados += r.value.dup; }
+        }
+        await new Promise(r => setTimeout(r, 100));
       }
+      console.log(`[IMPORT] Página ${pagina} procesada — importados hasta ahora: ${importados}`);
 
       if (leads.length < limite) break;
       pagina++;
