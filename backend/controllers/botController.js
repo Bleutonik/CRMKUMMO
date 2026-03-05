@@ -69,11 +69,11 @@ async function obtenerConversacionesPorPares(req, res) {
 
     const resultado = await pool.query(`
       SELECT
-        c.kommo_lead_id AS lead_id,
-        l.contacto_nombre AS nombre_contacto,
-        mc.contenido AS mensaje_cliente,
-        ma.contenido AS respuesta_bot,
-        mc.creado_en AS timestamp
+        c.kommo_lead_id        AS lead_id,
+        l.contacto_nombre      AS contact_name,
+        mc.contenido           AS mensaje_cliente,
+        ma.contenido           AS respuesta_bot,
+        mc.creado_en           AS timestamp
       FROM conversaciones c
       LEFT JOIN leads l ON c.lead_id = l.id
       JOIN mensajes mc ON mc.conversacion_id = c.id AND mc.rol = 'cliente'
@@ -89,9 +89,9 @@ async function obtenerConversacionesPorPares(req, res) {
       LIMIT $1
     `, [limite]);
 
-    res.json({ conversaciones: resultado.rows });
+    res.json({ conversations: resultado.rows });
   } catch (error) {
-    console.error('Error obteniendo conversaciones por pares:', error);
+    console.error('Error obteniendo conversaciones:', error);
     res.status(500).json({ error: 'Error al obtener conversaciones' });
   }
 }
