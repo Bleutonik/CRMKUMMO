@@ -8,8 +8,28 @@ const {
   obtenerConfiguracion,
   actualizarConfiguracion
 } = require('../controllers/conversationController');
+const {
+  obtenerEstadoBot,
+  toggleBot,
+  obtenerConversacionesPorPares,
+  obtenerConocimiento,
+  crearConocimiento,
+  eliminarConocimiento
+} = require('../controllers/botController');
 
-// Conversaciones
+// Bot control
+router.get('/bot-status', obtenerEstadoBot);
+router.post('/bot-toggle', toggleBot);
+
+// Conversaciones (dashboard nuevo — pares cliente/bot)
+router.get('/conversations', obtenerConversacionesPorPares);
+
+// Knowledge base
+router.get('/knowledge', obtenerConocimiento);
+router.post('/knowledge', crearConocimiento);
+router.delete('/knowledge/:id', eliminarConocimiento);
+
+// Conversaciones detalladas (dashboard anterior)
 router.get('/conversaciones', obtenerConversaciones);
 router.get('/conversaciones/:id', obtenerConversacion);
 

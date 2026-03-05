@@ -1,5 +1,5 @@
 const { pool } = require('../services/database/db');
-const { generarRespuesta } = require('../services/ai/claudeService');
+const { generarRespuestaAI } = require('../services/ai/claudeService');
 const { agregarNotaLead, obtenerInfoLead, obtenerContactoLead } = require('../services/kommo/kommoService');
 
 async function manejarWebhook(req, res) {
@@ -10,132 +10,83 @@ async function manejarWebhook(req, res) {
     const cuerpo = req.body;
     console.log('[WEBHOOK] Datos recibidos:', JSON.stringify(cuerpo, null, 2));
 
-    // Extraer datos de la nota según formato de Kommo
-    const nota = cuerpo?.leads?.note?.[0];
-    if (!nota) {
-      console.log('[WEBHOOK] Sin nota en el payload, ignorando');
+    // Verificar si el bot está activo
+    const estadoBot = await pool.query(
+      "SELECT valor FROM configuracion WHERE clave = 'bot_activo'"
+    );
+    if (estadoBot.rows[0]?.valor !== 'true') {
+      console.log('[WEBHOOK] Bot inactivo, ignorando mensaje');
       return;
     }
 
-    const textoNota = nota.note?.text;
-    const leadId = nota.lead_id || nota.note?.entity_id;
+    // Extraer campos desde message.add[0]
+    const msgObj = cuerpo?.message?.add?.[0];
+    const textoMensaje = msgObj?.text;
+    const leadId = String(msgObj?.lead_id || cuerpo?.leads?.note?.[0]?.lead_id || '');
+    const contactId = String(msgObj?.contact_id || '');
 
-    if (!textoNota || !leadId) {
-      console.log('[WEBHOOK] Nota sin texto o sin lead_id, ignorando');
+    if (!textoMensaje) {
+      console.log('[WEBHOOK] Sin mensaje en el payload, ignorando');
       return;
     }
 
-    // Ignorar notas del propio bot
-    if (textoNota.startsWith('🤖 Asistente IA:')) {
-      console.log('[WEBHOOK] Nota del bot, ignorando para evitar bucle');
+    if (!leadId) {
+      console.log('[WEBHOOK] Sin lead_id en el payload, ignorando');
       return;
     }
 
-    console.log(`[WEBHOOK] Procesando mensaje del lead ${leadId}: "${textoNota.substring(0, 100)}..."`);
+    // Ignorar respuestas del propio bot
+    if (textoMensaje.startsWith('🤖 Asistente IA:')) {
+      console.log('[WEBHOOK] Mensaje del bot, ignorando para evitar bucle');
+      return;
+    }
 
-    // Obtener o crear lead en la BD
-    const lead = await obtenerOCrearLead(leadId);
+    console.log(`Mensaje recibido: ${textoMensaje}`);
+    console.log(`[WEBHOOK] Lead ID: ${leadId} | Contact ID: ${contactId}`);
 
-    // Obtener o crear conversación
-    const conversacion = await obtenerOCrearConversacion(lead.id, leadId);
+    // Obtener nombre del contacto
+    let contactName = null;
+    try {
+      const infoContacto = await obtenerContactoLead(leadId);
+      contactName = infoContacto.nombre || null;
+    } catch {}
 
-    // Guardar mensaje del cliente
-    await guardarMensaje(conversacion.id, leadId, 'cliente', textoNota);
+    // Insertar en tabla conversations (sin respuesta_bot todavía)
+    const insertResult = await pool.query(`
+      INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot)
+      VALUES ($1, $2, $3, NULL)
+      RETURNING id
+    `, [leadId, contactName, textoMensaje]);
 
-    // Obtener info del lead para contexto
-    const infoLead = await obtenerInfoLead(leadId);
+    const convId = insertResult.rows[0].id;
+
+    // Obtener contexto del lead para el prompt
+    let contexto = {};
+    try {
+      contexto = await obtenerInfoLead(leadId);
+    } catch {}
 
     // Generar respuesta con IA
-    const resultadoIA = await generarRespuesta(textoNota, leadId, infoLead);
-
-    if (resultadoIA.error) {
-      await guardarMensaje(conversacion.id, leadId, 'sistema', 'Error al generar respuesta', 0, 0, true, resultadoIA.detalleError);
-      console.error('[WEBHOOK] Error en IA para lead', leadId);
-      return;
-    }
-
-    // Guardar respuesta del asistente
-    await guardarMensaje(
-      conversacion.id,
+    const respuestaIA = await generarRespuestaAI(textoMensaje, {
       leadId,
-      'asistente',
-      resultadoIA.texto,
-      resultadoIA.tokensUsados,
-      resultadoIA.tiempoMs
+      contactName,
+      ...contexto
+    });
+
+    // Actualizar la fila con la respuesta del bot
+    await pool.query(
+      'UPDATE conversations SET respuesta_bot = $1 WHERE id = $2',
+      [respuestaIA, convId]
     );
 
-    // Actualizar contador de conversación
-    await pool.query(`
-      UPDATE conversaciones
-      SET total_mensajes = total_mensajes + 2,
-          ultimo_mensaje_en = NOW(),
-          actualizado_en = NOW()
-      WHERE id = $1
-    `, [conversacion.id]);
-
     // Enviar respuesta a Kommo como nota
-    await agregarNotaLead(leadId, resultadoIA.texto);
+    await agregarNotaLead(leadId, respuestaIA);
 
-    console.log(`[WEBHOOK] Respuesta enviada al lead ${leadId} (${resultadoIA.tiempoMs}ms, ${resultadoIA.tokensUsados} tokens)`);
+    console.log(`[WEBHOOK] Respuesta enviada al lead ${leadId}`);
 
   } catch (error) {
     console.error('[WEBHOOK] Error procesando webhook:', error);
   }
-}
-
-async function obtenerOCrearLead(kommoLeadId) {
-  // Buscar lead existente
-  let resultado = await pool.query(
-    'SELECT * FROM leads WHERE kommo_lead_id = $1',
-    [kommoLeadId]
-  );
-
-  if (resultado.rows.length > 0) return resultado.rows[0];
-
-  // Intentar obtener info del contacto
-  let infoContacto = {};
-  try {
-    infoContacto = await obtenerContactoLead(kommoLeadId);
-  } catch {}
-
-  // Crear nuevo lead
-  resultado = await pool.query(`
-    INSERT INTO leads (kommo_lead_id, nombre, contacto_nombre, contacto_email, contacto_telefono)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING *
-  `, [
-    kommoLeadId,
-    `Lead #${kommoLeadId}`,
-    infoContacto.nombre || null,
-    infoContacto.email || null,
-    infoContacto.telefono || null
-  ]);
-
-  return resultado.rows[0];
-}
-
-async function obtenerOCrearConversacion(leadId, kommoLeadId) {
-  let resultado = await pool.query(
-    'SELECT * FROM conversaciones WHERE kommo_lead_id = $1 AND estado = $2',
-    [kommoLeadId, 'activa']
-  );
-
-  if (resultado.rows.length > 0) return resultado.rows[0];
-
-  resultado = await pool.query(`
-    INSERT INTO conversaciones (lead_id, kommo_lead_id, ultimo_mensaje_en)
-    VALUES ($1, $2, NOW())
-    RETURNING *
-  `, [leadId, kommoLeadId]);
-
-  return resultado.rows[0];
-}
-
-async function guardarMensaje(conversacionId, kommoLeadId, rol, contenido, tokens = 0, tiempoMs = 0, esError = false, detalleError = null) {
-  await pool.query(`
-    INSERT INTO mensajes (conversacion_id, kommo_lead_id, rol, contenido, tokens_usados, tiempo_respuesta_ms, error, detalle_error)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-  `, [conversacionId, kommoLeadId, rol, contenido, tokens, tiempoMs, esError, detalleError]);
 }
 
 module.exports = { manejarWebhook };
