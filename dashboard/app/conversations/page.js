@@ -25,7 +25,7 @@ export default function ConversationsPage() {
 
   useEffect(() => {
     api.conversations()
-      .then(data => setConversaciones(data.conversaciones || []))
+      .then(data => setConversaciones(Array.isArray(data) ? data : data.conversations || []))
       .catch(e => setError(e.message))
       .finally(() => setCargando(false));
   }, []);
@@ -33,7 +33,7 @@ export default function ConversationsPage() {
   const filtradas = conversaciones.filter(c =>
     !busqueda ||
     String(c.lead_id).includes(busqueda) ||
-    c.nombre_contacto?.toLowerCase().includes(busqueda.toLowerCase()) ||
+    c.contact_name?.toLowerCase().includes(busqueda.toLowerCase()) ||
     c.mensaje_cliente?.toLowerCase().includes(busqueda.toLowerCase())
   );
 
@@ -106,7 +106,7 @@ export default function ConversationsPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-white">
-                      {conv.nombre_contacto || <span className="text-muted">—</span>}
+                      {conv.contact_name || <span className="text-muted">—</span>}
                     </td>
                     <td className="px-5 py-4 text-slate-300 max-w-xs">
                       {truncar(conv.mensaje_cliente)}
