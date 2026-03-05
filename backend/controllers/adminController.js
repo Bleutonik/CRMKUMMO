@@ -32,6 +32,61 @@ async function importarHistorial(req, res) {
   let duplicados = 0;
   let pagina = 1;
   const limite = 250;
+  const BATCH_SIZE = 5; // procesar 5 leads en paralelo
+
+  async function procesarLead(lead) {
+    const leadId = String(lead.id);
+    const contactName = lead._embedded?.contacts?.[0]?.name || null;
+
+    let notas = [];
+    try {
+      const resNotas = await http.get(`/api/v4/leads/${lead.id}/notes`, { params: { limit: 250 } });
+      notas = resNotas.data?._embedded?.notes || [];
+      notas.sort((a, b) => a.created_at - b.created_at);
+    } catch {}
+
+    const tieneTipos = notas.some(n => n.note_type === 25 || n.note_type === 26);
+    const pares = [];
+
+    if (tieneTipos) {
+      let pendiente = null, ts = null;
+      for (const nota of notas) {
+        const texto = nota.params?.text?.trim();
+        if (!texto) continue;
+        if (nota.note_type === 25) { pendiente = texto; ts = nota.created_at; }
+        else if (nota.note_type === 26 && pendiente) {
+          pares.push({ mensaje_cliente: pendiente, respuesta_bot: texto, ts });
+          pendiente = null;
+        }
+      }
+      if (pendiente) pares.push({ mensaje_cliente: pendiente, respuesta_bot: null, ts });
+    } else {
+      const validas = notas.filter(n => n.note_type === 4 && n.params?.text?.trim());
+      for (let i = 0; i < validas.length; i += 2) {
+        pares.push({
+          mensaje_cliente: validas[i].params.text.trim(),
+          respuesta_bot:   validas[i + 1]?.params?.text?.trim() || null,
+          ts:              validas[i].created_at
+        });
+      }
+    }
+
+    let imp = 0, dup = 0;
+    for (const par of pares) {
+      const timestamp = new Date(par.ts * 1000).toISOString();
+      const existe = await pool.query(
+        'SELECT id FROM conversations WHERE lead_id=$1 AND mensaje_cliente=$2 AND timestamp=$3',
+        [leadId, par.mensaje_cliente, timestamp]
+      );
+      if (existe.rows.length > 0) { dup++; continue; }
+      await pool.query(
+        'INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1,$2,$3,$4,$5)',
+        [leadId, contactName, par.mensaje_cliente, par.respuesta_bot, timestamp]
+      );
+      imp++;
+    }
+    return { imp, dup };
+  }
 
   try {
     while (true) {
@@ -50,70 +105,17 @@ async function importarHistorial(req, res) {
       if (leads.length === 0) break;
       console.log(`[IMPORT] Página ${pagina} — ${leads.length} leads`);
 
-      for (const lead of leads) {
-        const leadId = String(lead.id);
-        const contactName = lead._embedded?.contacts?.[0]?.name || null;
-
-        // Obtener notas del lead
-        let notas = [];
-        try {
-          const resNotas = await http.get(`/api/v4/leads/${lead.id}/notes`, {
-            params: { limit: 250 }
-          });
-          notas = resNotas.data?._embedded?.notes || [];
-          notas.sort((a, b) => a.created_at - b.created_at);
-        } catch {}
-
-        // Emparejar notas 25(cliente) / 26(agente) o tipo 4 alternas
-        const tieneTipos = notas.some(n => n.note_type === 25 || n.note_type === 26);
-        const pares = [];
-
-        if (tieneTipos) {
-          let pendiente = null;
-          let ts = null;
-          for (const nota of notas) {
-            const texto = nota.params?.text?.trim();
-            if (!texto) continue;
-            if (nota.note_type === 25) { pendiente = texto; ts = nota.created_at; }
-            else if (nota.note_type === 26 && pendiente) {
-              pares.push({ mensaje_cliente: pendiente, respuesta_bot: texto, ts });
-              pendiente = null;
-            }
-          }
-          if (pendiente) pares.push({ mensaje_cliente: pendiente, respuesta_bot: null, ts });
-        } else {
-          const validas = notas.filter(n => n.note_type === 4 && n.params?.text?.trim());
-          for (let i = 0; i < validas.length; i += 2) {
-            pares.push({
-              mensaje_cliente: validas[i].params.text.trim(),
-              respuesta_bot:   validas[i + 1]?.params?.text?.trim() || null,
-              ts:              validas[i].created_at
-            });
-          }
-        }
-
-        // Guardar pares evitando duplicados
-        for (const par of pares) {
-          const timestamp = new Date(par.ts * 1000).toISOString();
-          const existe = await pool.query(
-            'SELECT id FROM conversations WHERE lead_id=$1 AND mensaje_cliente=$2 AND timestamp=$3',
-            [leadId, par.mensaje_cliente, timestamp]
-          );
-          if (existe.rows.length > 0) { duplicados++; continue; }
-
-          await pool.query(
-            'INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1,$2,$3,$4,$5)',
-            [leadId, contactName, par.mensaje_cliente, par.respuesta_bot, timestamp]
-          );
-          importados++;
-        }
-
-        await new Promise(r => setTimeout(r, 100));
+      // Procesar en lotes de BATCH_SIZE en paralelo
+      for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+        const lote = leads.slice(i, i + BATCH_SIZE);
+        const resultados = await Promise.all(lote.map(procesarLead));
+        for (const r of resultados) { importados += r.imp; duplicados += r.dup; }
+        await new Promise(r => setTimeout(r, 100)); // pequeña pausa entre lotes
       }
 
       if (leads.length < limite) break;
       pagina++;
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 200));
     }
 
     console.log(`[IMPORT] Completado — importados: ${importados} | duplicados: ${duplicados}`);
