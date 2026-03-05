@@ -12,7 +12,6 @@ const claude = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
 // ─── IMPORTAR HISTORIAL DE KOMMO ─────────────────────────────────────────────
 
 async function importarHistorial(req, res) {
-  // Responde inmediatamente y procesa en background
   res.json({ ok: true, mensaje: 'Importación iniciada. Revisa los logs de Railway.' });
 
   console.log('[IMPORT] Iniciando importación del historial de Kommo...');
@@ -25,14 +24,14 @@ async function importarHistorial(req, res) {
   const http = axios.create({
     baseURL: kommoBaseUrl,
     headers: { Authorization: `Bearer ${kommoToken}` },
-    timeout: 15000
+    timeout: 10000
   });
 
   let importados = 0;
   let duplicados = 0;
   let pagina = 1;
   const limite = 250;
-  const BATCH_SIZE = 5; // procesar 5 leads en paralelo
+  const BATCH_SIZE = 2; // 2 en paralelo para respetar rate limit de Kommo (~7 req/s)
 
   async function procesarLead(lead) {
     const leadId = String(lead.id);
@@ -45,7 +44,7 @@ async function importarHistorial(req, res) {
       const resNotas = await Promise.race([req, timeout]);
       notas = resNotas.data?._embedded?.notes || [];
       notas.sort((a, b) => a.created_at - b.created_at);
-    } catch { return { imp: 0, dup: 0 }; } // si falla o timeout, saltar este lead
+    } catch { return { imp: 0, dup: 0 }; }
 
     const tieneTipos = notas.some(n => n.note_type === 25 || n.note_type === 26);
     const pares = [];
@@ -88,7 +87,7 @@ async function importarHistorial(req, res) {
         );
         imp++;
       }
-    } catch { /* error de DB, continuar */ }
+    } catch { /* error DB, continuar */ }
     return { imp, dup };
   }
 
@@ -96,33 +95,38 @@ async function importarHistorial(req, res) {
     while (true) {
       let leads = [];
       try {
-        const res = await http.get('/api/v4/leads', {
-          params: { page: pagina, limit: limite, with: 'contacts' }
-        });
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout-pagina')), 12000));
+        const req = http.get('/api/v4/leads', { params: { page: pagina, limit: limite, with: 'contacts' } });
+        const res = await Promise.race([req, timeout]);
         leads = res.data?._embedded?.leads || [];
       } catch (e) {
         if (e.response?.status === 204) break;
-        console.error('[IMPORT] Error obteniendo leads:', e.message);
+        console.error(`[IMPORT] Error página ${pagina}:`, e.message);
+        if (e.message === 'timeout-pagina') {
+          pagina++;
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
         break;
       }
 
       if (leads.length === 0) break;
       console.log(`[IMPORT] Página ${pagina} — ${leads.length} leads`);
 
-      // Procesar en lotes de BATCH_SIZE en paralelo
       for (let i = 0; i < leads.length; i += BATCH_SIZE) {
         const lote = leads.slice(i, i + BATCH_SIZE);
         const resultados = await Promise.allSettled(lote.map(procesarLead));
         for (const r of resultados) {
           if (r.status === 'fulfilled') { importados += r.value.imp; duplicados += r.value.dup; }
         }
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 300)); // 300ms entre lotes
       }
+
       console.log(`[IMPORT] Página ${pagina} procesada — importados hasta ahora: ${importados}`);
 
       if (leads.length < limite) break;
       pagina++;
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 500)); // 500ms entre páginas
     }
 
     console.log(`[IMPORT] Completado — importados: ${importados} | duplicados: ${duplicados}`);
