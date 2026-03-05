@@ -27,109 +27,118 @@ async function importarHistorial(req, res) {
     timeout: 10000
   });
 
-  let importados = 0;
-  let duplicados = 0;
-  let pagina = 1;
-  const limite = 250;
-  const BATCH_SIZE = 2; // 2 en paralelo para respetar rate limit de Kommo (~7 req/s)
-
-  async function procesarLead(lead) {
-    const leadId = String(lead.id);
-    const contactName = lead._embedded?.contacts?.[0]?.name || null;
-
-    let notas = [];
-    try {
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
-      const req = http.get(`/api/v4/leads/${lead.id}/notes`, { params: { limit: 250 } });
-      const resNotas = await Promise.race([req, timeout]);
-      notas = resNotas.data?._embedded?.notes || [];
-      notas.sort((a, b) => a.created_at - b.created_at);
-    } catch { return { imp: 0, dup: 0 }; }
-
-    const tieneTipos = notas.some(n => n.note_type === 25 || n.note_type === 26);
-    const pares = [];
-
-    if (tieneTipos) {
-      let pendiente = null, ts = null;
-      for (const nota of notas) {
-        const texto = nota.params?.text?.trim();
-        if (!texto) continue;
-        if (nota.note_type === 25) { pendiente = texto; ts = nota.created_at; }
-        else if (nota.note_type === 26 && pendiente) {
-          pares.push({ mensaje_cliente: pendiente, respuesta_bot: texto, ts });
-          pendiente = null;
+  // Helper: request con timeout y retry
+  async function kommoGet(url, params = {}, reintentos = 2) {
+    for (let intento = 0; intento <= reintentos; intento++) {
+      try {
+        const res = await http.get(url, { params });
+        return res;
+      } catch (e) {
+        if (intento < reintentos) {
+          await new Promise(r => setTimeout(r, 500 * (intento + 1)));
+          continue;
         }
-      }
-      if (pendiente) pares.push({ mensaje_cliente: pendiente, respuesta_bot: null, ts });
-    } else {
-      const validas = notas.filter(n => n.note_type === 4 && n.params?.text?.trim());
-      for (let i = 0; i < validas.length; i += 2) {
-        pares.push({
-          mensaje_cliente: validas[i].params.text.trim(),
-          respuesta_bot:   validas[i + 1]?.params?.text?.trim() || null,
-          ts:              validas[i].created_at
-        });
+        throw e;
       }
     }
-
-    let imp = 0, dup = 0;
-    try {
-      for (const par of pares) {
-        const timestamp = new Date(par.ts * 1000).toISOString();
-        const existe = await pool.query(
-          'SELECT id FROM conversations WHERE lead_id=$1 AND mensaje_cliente=$2 AND timestamp=$3',
-          [leadId, par.mensaje_cliente, timestamp]
-        );
-        if (existe.rows.length > 0) { dup++; continue; }
-        await pool.query(
-          'INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1,$2,$3,$4,$5)',
-          [leadId, contactName, par.mensaje_cliente, par.respuesta_bot, timestamp]
-        );
-        imp++;
-      }
-    } catch { /* error DB, continuar */ }
-    return { imp, dup };
   }
+
+  let importados = 0;
+  let duplicados = 0;
+  let saltados = 0;
+  let pagina = 1;
+  const limite = 250;
 
   try {
     while (true) {
+      // Obtener página de leads con retry
       let leads = [];
       try {
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout-pagina')), 12000));
-        const req = http.get('/api/v4/leads', { params: { page: pagina, limit: limite, with: 'contacts' } });
-        const res = await Promise.race([req, timeout]);
+        const res = await kommoGet('/api/v4/leads', { page: pagina, limit: limite, with: 'contacts' });
         leads = res.data?._embedded?.leads || [];
       } catch (e) {
-        if (e.response?.status === 204) break;
-        console.error(`[IMPORT] Error página ${pagina}:`, e.message);
-        if (e.message === 'timeout-pagina') {
-          pagina++;
-          await new Promise(r => setTimeout(r, 1000));
-          continue;
-        }
-        break;
+        if (e.response?.status === 204 || e.response?.status === 404) break;
+        console.error(`[IMPORT] Error página ${pagina} (saltando):`, e.message);
+        pagina++;
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
       }
 
       if (leads.length === 0) break;
-      console.log(`[IMPORT] Página ${pagina} — ${leads.length} leads`);
+      console.log(`[IMPORT] Procesando página ${pagina} — ${leads.length} leads`);
 
-      for (let i = 0; i < leads.length; i += BATCH_SIZE) {
-        const lote = leads.slice(i, i + BATCH_SIZE);
-        const resultados = await Promise.allSettled(lote.map(procesarLead));
-        for (const r of resultados) {
-          if (r.status === 'fulfilled') { importados += r.value.imp; duplicados += r.value.dup; }
+      // Procesar leads uno por uno (secuencial)
+      for (const lead of leads) {
+        const leadId = String(lead.id);
+        const contactName = lead._embedded?.contacts?.[0]?.name || null;
+
+        // Obtener notas con retry
+        let notas = [];
+        try {
+          const res = await kommoGet(`/api/v4/leads/${lead.id}/notes`, { limit: 250 });
+          notas = res.data?._embedded?.notes || [];
+          notas.sort((a, b) => a.created_at - b.created_at);
+        } catch {
+          saltados++;
+          await new Promise(r => setTimeout(r, 200));
+          continue;
         }
-        await new Promise(r => setTimeout(r, 300)); // 300ms entre lotes
+
+        // Extraer pares de conversación
+        const tieneTipos = notas.some(n => n.note_type === 25 || n.note_type === 26);
+        const pares = [];
+
+        if (tieneTipos) {
+          let pendiente = null, ts = null;
+          for (const nota of notas) {
+            const texto = nota.params?.text?.trim();
+            if (!texto) continue;
+            if (nota.note_type === 25) { pendiente = texto; ts = nota.created_at; }
+            else if (nota.note_type === 26 && pendiente) {
+              pares.push({ mensaje_cliente: pendiente, respuesta_bot: texto, ts });
+              pendiente = null;
+            }
+          }
+          if (pendiente) pares.push({ mensaje_cliente: pendiente, respuesta_bot: null, ts });
+        } else {
+          const validas = notas.filter(n => n.note_type === 4 && n.params?.text?.trim());
+          for (let i = 0; i < validas.length; i += 2) {
+            pares.push({
+              mensaje_cliente: validas[i].params.text.trim(),
+              respuesta_bot:   validas[i + 1]?.params?.text?.trim() || null,
+              ts:              validas[i].created_at
+            });
+          }
+        }
+
+        // Guardar pares en DB
+        for (const par of pares) {
+          try {
+            const timestamp = new Date(par.ts * 1000).toISOString();
+            const existe = await pool.query(
+              'SELECT id FROM conversations WHERE lead_id=$1 AND mensaje_cliente=$2 AND timestamp=$3',
+              [leadId, par.mensaje_cliente, timestamp]
+            );
+            if (existe.rows.length > 0) { duplicados++; continue; }
+            await pool.query(
+              'INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1,$2,$3,$4,$5)',
+              [leadId, contactName, par.mensaje_cliente, par.respuesta_bot, timestamp]
+            );
+            importados++;
+          } catch { /* skip */ }
+        }
+
+        await new Promise(r => setTimeout(r, 150)); // 150ms entre leads = ~6 req/s
       }
 
-      console.log(`[IMPORT] Página ${pagina} procesada — importados hasta ahora: ${importados}`);
+      console.log(`[IMPORT] Página ${pagina} lista — importados: ${importados} | duplicados: ${duplicados} | saltados: ${saltados}`);
 
       if (leads.length < limite) break;
       pagina++;
-      await new Promise(r => setTimeout(r, 500)); // 500ms entre páginas
+      await new Promise(r => setTimeout(r, 400)); // pausa entre páginas
     }
 
-    console.log(`[IMPORT] Completado — importados: ${importados} | duplicados: ${duplicados}`);
+    console.log(`[IMPORT] ✅ Completado — importados: ${importados} | duplicados: ${duplicados} | saltados: ${saltados}`);
 
   } catch (err) {
     console.error('[IMPORT] Error fatal:', err.message);
