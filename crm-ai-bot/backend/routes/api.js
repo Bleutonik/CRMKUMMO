@@ -30,10 +30,11 @@ router.get('/configuracion', obtenerConfiguracion);
 router.post('/prompts', actualizarConfiguracion);
 
 // Contactos
-const { obtenerContactos, obtenerContacto, responderManual } = require('../controllers/contactsController');
+const { obtenerContactos, obtenerContacto, responderManual, sincronizarContactos } = require('../controllers/contactsController');
 router.get('/contacts', obtenerContactos);
 router.get('/contacts/:id', obtenerContacto);
 router.post('/reply', responderManual);
+router.post('/admin/sync-contacts', sincronizarContactos);
 
 // Leads CRM (Kommo)
 const { obtenerLeadsCRM, obtenerPipelines, obtenerLeadDetalle, actualizarEtapa, agregarNota } = require('../controllers/leadsController');

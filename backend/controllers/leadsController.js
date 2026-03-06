@@ -67,17 +67,39 @@ async function obtenerLeadsCRM(req, res) {
 async function obtenerPipelines(req, res) {
   try {
     const client = http();
-    const r = await kommoGet(client, '/api/v4/leads/pipelines');
-    const pipelines = r.data?._embedded?.pipelines || [];
+    // Try with=statuses inline first
+    let pipelines = [];
+    try {
+      const r = await kommoGet(client, '/api/v4/leads/pipelines?with=statuses');
+      pipelines = r.data?._embedded?.pipelines || [];
+      console.log(`[PIPELINES] Got ${pipelines.length} pipelines with inline statuses`);
+    } catch {
+      const r = await kommoGet(client, '/api/v4/leads/pipelines');
+      pipelines = r.data?._embedded?.pipelines || [];
+      console.log(`[PIPELINES] Got ${pipelines.length} pipelines (no inline statuses)`);
+    }
 
     const withStatuses = await Promise.all(pipelines.map(async (pip) => {
+      // If statuses already embedded, use them
+      if (pip._embedded?.statuses) {
+        const statusMap = {};
+        const statusArr = Array.isArray(pip._embedded.statuses)
+          ? pip._embedded.statuses
+          : Object.values(pip._embedded.statuses);
+        statusArr.forEach(s => { statusMap[s.id] = s; });
+        console.log(`[PIPELINES] Pipeline ${pip.id} "${pip.name}": ${statusArr.length} statuses inline`);
+        return { ...pip, _embedded: { ...pip._embedded, statuses: statusMap } };
+      }
+      // Otherwise fetch separately
       try {
         const sr = await kommoGet(client, `/api/v4/leads/pipelines/${pip.id}/statuses`);
         const statuses = sr.data?._embedded?.statuses || [];
         const statusMap = {};
         statuses.forEach(s => { statusMap[s.id] = s; });
+        console.log(`[PIPELINES] Pipeline ${pip.id} "${pip.name}": ${statuses.length} statuses fetched`);
         return { ...pip, _embedded: { ...pip._embedded, statuses: statusMap } };
-      } catch {
+      } catch (e) {
+        console.log(`[PIPELINES] Pipeline ${pip.id} statuses failed: ${e.message}`);
         return pip;
       }
     }));

@@ -160,7 +160,7 @@ export default function PipelinePage() {
       {/* Kanban */}
       <div className="flex gap-4 overflow-x-auto flex-1 pb-4">
         {etapas.map(etapa => {
-          const leadsEtapa = leadsDelPipeline.filter(l => l.status_id === etapa.id);
+          const leadsEtapa = leadsDelPipeline.filter(l => Number(l.status_id) === Number(etapa.id));
           const valorEtapa = leadsEtapa.reduce((s, l) => s + (l.valor || 0), 0);
           return (
             <div key={etapa.id} className="flex-shrink-0 w-72 flex flex-col">
