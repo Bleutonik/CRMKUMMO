@@ -209,8 +209,9 @@ async function responderManual(req, res) {
 
     const http = kommoHttp();
 
+    // note_type 103 = Kommo Talk outgoing — envía como mensaje de texto al cliente
     await http.post(`/api/v4/leads/${leadId}/notes`, [{
-      note_type: 'common',
+      note_type: 103,
       params: { text: mensaje.trim() }
     }]);
 
