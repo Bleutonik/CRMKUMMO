@@ -125,16 +125,24 @@ async function obtenerLeadDetalle(req, res) {
     console.log(`[LEAD DETALLE] Lead ${id} ok: ${l.name}`);
 
     const [notasR, contactosR] = await Promise.allSettled([
-      kommoGet(client, `/api/v4/leads/${id}/notes`, { limit: 50 }),
+      kommoGet(client, `/api/v4/leads/${id}/notes`, { limit: 100 }),
       l._embedded?.contacts?.[0]?.id
         ? kommoGet(client, `/api/v4/contacts/${l._embedded.contacts[0].id}`)
         : Promise.resolve(null)
     ]);
 
+    // note_type: 25/102 = entrante (cliente), 26/103 = saliente (agente/bot), 4 = nota interna
+    function rolNota(noteType) {
+      const t = Number(noteType);
+      if (t === 25 || t === 102) return 'cliente';
+      if (t === 26 || t === 103) return 'agente';
+      return 'nota';
+    }
+
     const notas = (notasR.status === 'fulfilled'
       ? notasR.value.data?._embedded?.notes || []
       : []
-    ).sort((a, b) => b.created_at - a.created_at)
+    ).sort((a, b) => a.created_at - b.created_at) // cronológico: más antiguo primero
      .map(n => {
        let texto = n.params?.text || null;
        if (typeof texto === 'string' && texto.startsWith('{')) {
@@ -143,6 +151,7 @@ async function obtenerLeadDetalle(req, res) {
        return {
          id:        n.id,
          tipo:      n.note_type,
+         rol:       rolNota(n.note_type),
          texto,
          creado_en: n.created_at ? new Date(n.created_at * 1000).toISOString() : null,
        };

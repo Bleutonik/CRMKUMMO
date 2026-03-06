@@ -73,4 +73,23 @@ async function obtenerContactoLead(leadId) {
   }
 }
 
-module.exports = { agregarNotaLead, obtenerInfoLead, obtenerContactoLead };
+// Envía un mensaje de texto real a través de Kommo Talk (SMS/canal de mensajería)
+// note_type 103 = Talk outgoing — Kommo lo reenvía al cliente por el canal activo
+async function enviarMensajeTalk(leadId, talkId, texto) {
+  try {
+    const params = { text: texto };
+    if (talkId) params.talk_id = Number(talkId);
+    const respuesta = await axios.post(
+      `${BASE_URL}/api/v4/leads/${leadId}/notes`,
+      [{ note_type: 103, params }],
+      { headers: headers() }
+    );
+    console.log(`[KOMMO] Mensaje Talk (tipo 103) enviado al lead ${leadId}`);
+    return respuesta.data;
+  } catch (error) {
+    console.error('[KOMMO] Error enviando Talk, usando nota común como fallback:', error.response?.data || error.message);
+    return agregarNotaLead(leadId, texto);
+  }
+}
+
+module.exports = { agregarNotaLead, enviarMensajeTalk, obtenerInfoLead, obtenerContactoLead };

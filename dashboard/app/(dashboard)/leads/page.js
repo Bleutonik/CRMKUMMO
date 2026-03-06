@@ -8,6 +8,16 @@ function formatFecha(ts) {
   return new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function formatHora(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatFechaHora(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 function formatValor(v) {
   if (!v) return '—';
   return '$' + Number(v).toLocaleString('en-US');
@@ -174,23 +184,49 @@ function LeadDetalle({ id, onClose }) {
               )}
             </div>
 
-            {/* Notas */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="text-xs text-muted uppercase tracking-wider mb-3">
-                Notas ({lead.notas?.length || 0})
+            {/* Conversación */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="text-xs text-muted uppercase tracking-wider mb-3 px-2">
+                Conversación ({lead.notas?.length || 0} mensajes)
               </div>
               {!lead.notas?.length ? (
-                <div className="text-sm text-muted text-center py-8">Sin notas</div>
+                <div className="text-sm text-muted text-center py-8">Sin mensajes</div>
               ) : (
-                <div className="space-y-3">
-                  {lead.notas.map((n, i) => (
-                    <div key={i} className="bg-base rounded-xl p-4">
-                      <div className="text-xs text-muted mb-1.5">{formatFecha(n.creado_en)}</div>
-                      <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
-                        {typeof n.texto === 'string' ? n.texto : JSON.stringify(n.texto)}
+                <div className="space-y-2">
+                  {lead.notas.map((n, i) => {
+                    const texto = typeof n.texto === 'string' ? n.texto : JSON.stringify(n.texto);
+                    const esCliente = n.rol === 'cliente';
+                    const esNota = n.rol === 'nota';
+
+                    if (esNota) {
+                      return (
+                        <div key={i} className="flex justify-center">
+                          <div className="bg-white/5 border border-border rounded-lg px-3 py-1.5 max-w-[85%] text-center">
+                            <div className="text-xs text-muted italic whitespace-pre-wrap">{texto}</div>
+                            <div className="text-[10px] text-muted/60 mt-0.5">{formatFechaHora(n.creado_en)}</div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={i} className={`flex ${esCliente ? 'justify-start' : 'justify-end'}`}>
+                        <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                          esCliente
+                            ? 'bg-white/8 text-slate-200 rounded-tl-sm'
+                            : 'bg-accent/20 border border-accent/30 text-slate-100 rounded-tr-sm'
+                        }`}>
+                          <div className={`text-[10px] font-medium mb-1 ${esCliente ? 'text-slate-400' : 'text-accent/80'}`}>
+                            {esCliente ? (lead.contacto?.nombre || 'Cliente') : '🤖 Bot IA'}
+                          </div>
+                          <div className="text-sm leading-relaxed whitespace-pre-wrap">{texto}</div>
+                          <div className={`text-[10px] mt-1 ${esCliente ? 'text-muted' : 'text-accent/60'}`}>
+                            {formatHora(n.creado_en)}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

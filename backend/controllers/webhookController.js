@@ -1,6 +1,6 @@
 const { pool } = require('../services/database/db');
 const { generarRespuestaAI, extraerIntento } = require('../services/ai/claudeService');
-const { agregarNotaLead, obtenerInfoLead, obtenerContactoLead } = require('../services/kommo/kommoService');
+const { agregarNotaLead, enviarMensajeTalk, obtenerInfoLead, obtenerContactoLead } = require('../services/kommo/kommoService');
 
 async function manejarWebhook(req, res) {
   // Responder inmediatamente a Kommo (evitar timeout)
@@ -19,6 +19,7 @@ async function manejarWebhook(req, res) {
     let textoMensaje = null;
     let leadId = '';
     let autorNombre = null;
+    let talkId = null;
 
     if (msgTwilio) {
       // Ignorar mensajes salientes del bot
@@ -29,6 +30,7 @@ async function manejarWebhook(req, res) {
       textoMensaje = msgTwilio.text;
       leadId = String(msgTwilio.element_id || msgTwilio.entity_id || msgTwilio.lead_id || '');
       autorNombre = msgTwilio.author?.name || null;
+      talkId = msgTwilio.talk_id || msgTwilio.params?.talk_id || null;
       console.log('[WEBHOOK] Formato Twilio detectado');
 
     } else if (notaKommo) {
@@ -46,7 +48,6 @@ async function manejarWebhook(req, res) {
       //  4  = nota común (agente escribe manualmente — ignorar para no auto-responder notas internas)
       // 25  = mensaje entrante (WhatsApp, SMS, cualquier canal externo)
       // 102 = Kommo Talk / SMS entrante
-      // Si en el futuro aparece otro tipo entrante con texto, se aceptará igual
       const ENTRANTES_ACEPTADOS = ['25', '102'];
       if (!ENTRANTES_ACEPTADOS.includes(tipo)) {
         console.log(`[WEBHOOK] Nota tipo ${tipo} no es mensaje entrante de cliente, ignorando`);
@@ -55,7 +56,8 @@ async function manejarWebhook(req, res) {
 
       textoMensaje = notaKommo.text || notaKommo.params?.text;
       leadId = String(notaKommo.element_id || '');
-      console.log(`[WEBHOOK] Mensaje entrante tipo ${tipo} detectado`);
+      talkId = notaKommo.params?.talk_id || notaKommo.talk_id || null;
+      console.log(`[WEBHOOK] Mensaje entrante tipo ${tipo} detectado, talk_id: ${talkId}`);
 
     } else {
       console.log('[WEBHOOK] Formato de payload no reconocido, ignorando');
@@ -140,8 +142,8 @@ async function manejarWebhook(req, res) {
       [respuestaLimpia, convId]
     );
 
-    // Enviar respuesta a Kommo (sin el tag)
-    await agregarNotaLead(leadId, respuestaLimpia);
+    // Enviar respuesta como mensaje de texto (Talk tipo 103) — llega al cliente como SMS
+    await enviarMensajeTalk(leadId, talkId, respuestaLimpia);
 
     console.log(`[WEBHOOK] Respuesta automática enviada al lead ${leadId}`);
 
