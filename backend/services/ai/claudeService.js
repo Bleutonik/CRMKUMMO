@@ -18,8 +18,9 @@ async function obtenerPromptSistema() {
 
 async function obtenerConocimiento() {
   try {
+    // Máximo 12 entradas generales para no saturar el prompt
     const resultado = await pool.query(
-      'SELECT pregunta, respuesta, categoria FROM conocimiento WHERE activo = TRUE ORDER BY categoria'
+      'SELECT pregunta, respuesta, categoria FROM conocimiento WHERE activo = TRUE ORDER BY categoria, creado_en DESC LIMIT 12'
     );
     if (resultado.rows.length === 0) return '';
     const entradas = resultado.rows.map(r =>
@@ -143,15 +144,17 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
     return 'Gracias por tu mensaje. Un agente te responderá pronto.';
   }
 
+  let promptSistema = 'Eres un asistente de ventas profesional y amigable.';
   try {
     console.log('[AI] Iniciando generarRespuestaAI para lead:', contexto.leadId);
-    const [promptSistema, conocimientoGeneral, historial, ejemplos, conocimientoRelevante] = await Promise.all([
+    const [_prompt, conocimientoGeneral, historial, ejemplos, conocimientoRelevante] = await Promise.all([
       obtenerPromptSistema(),
       obtenerConocimiento(),
       obtenerHistorial(contexto.leadId),
       obtenerEjemplosRelevantes(mensaje, contexto.leadId),
       obtenerConocimientoRelevante(mensaje)
     ]);
+    promptSistema = _prompt;
     console.log('[AI] Contexto cargado. Llamando a Claude...');
 
     // Construir contexto completo del lead/contacto
@@ -184,8 +187,24 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
     return respuesta.content[0].text;
 
   } catch (error) {
-    console.error('[AI] Error tipo:', error.constructor?.name, '| Mensaje:', error.message);
-    throw error; // re-lanzar para que probarBot lo capture y loguee completo
+    // Rate limit: esperar 1 segundo y reintentar una vez
+    if (error?.status === 429) {
+      console.warn('[AI] Rate limit alcanzado, reintentando en 2s...');
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const retry = await cliente.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          system: promptSistema,   // usar solo el prompt base en el reintento
+          messages: [{ role: 'user', content: mensaje }]
+        });
+        return retry.content[0].text;
+      } catch {
+        return 'En este momento hay mucha demanda. Por favor intenta en unos segundos.';
+      }
+    }
+    console.error('[AI] Error generando respuesta:', error.message);
+    return 'Gracias por tu mensaje. Un agente te responderá pronto.';
   }
 }
 
