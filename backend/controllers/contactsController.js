@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { Pool } = require('pg');
+const { enviarSmsTwilio } = require('../services/twilio/twilioService');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -199,16 +200,15 @@ async function sincronizarContactos(req, res) {
   }
 }
 
-// Obtiene el talk_id más reciente del lead buscando en sus notas tipo 102 (Talk entrante)
-async function obtenerTalkId(http, leadId) {
+// Obtiene el teléfono del contacto asociado a un lead
+async function obtenerTelefonoLead(http, leadId) {
   try {
-    const resp = await http.get(`/api/v4/leads/${leadId}/notes`, { params: { limit: 50 } });
-    const notas = resp.data?._embedded?.notes || [];
-    // Buscar la nota más reciente de tipo 102 (SMS entrante) que tenga talk_id
-    const nota102 = notas
-      .filter(n => Number(n.note_type) === 102 && n.params?.talk_id)
-      .sort((a, b) => b.created_at - a.created_at)[0];
-    return nota102?.params?.talk_id || null;
+    const respLead = await http.get(`/api/v4/leads/${leadId}`);
+    const contactoId = respLead.data._embedded?.contacts?.[0]?.id;
+    if (!contactoId) return null;
+    const respContacto = await http.get(`/api/v4/contacts/${contactoId}`);
+    const campos = respContacto.data.custom_fields_values || [];
+    return campos.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null;
   } catch {
     return null;
   }
@@ -223,34 +223,31 @@ async function responderManual(req, res) {
     }
 
     const http = kommoHttp();
+    const texto = mensaje.trim();
 
-    // Intentar enviar como mensaje de texto (Talk) con el talk_id de la última conversación
-    const talkId = await obtenerTalkId(http, leadId);
-    console.log(`[REPLY] lead ${leadId} — talk_id: ${talkId}`);
+    // Obtener teléfono del cliente
+    const telefono = await obtenerTelefonoLead(http, leadId);
+    console.log(`[REPLY] lead ${leadId} — teléfono: ${telefono}`);
 
-    if (talkId) {
-      // note_type 103 = Kommo Talk outgoing (SMS al cliente)
-      await http.post(`/api/v4/leads/${leadId}/notes`, [{
-        note_type: 103,
-        params: { talk_id: Number(talkId), text: mensaje.trim() }
-      }]);
-      console.log(`[REPLY] Mensaje SMS enviado via Talk al lead ${leadId}`);
+    if (telefono) {
+      // Enviar SMS real via Twilio
+      await enviarSmsTwilio(telefono, texto);
     } else {
-      // Sin Talk activo: usar nota común como fallback
-      console.log(`[REPLY] Sin talk_id — usando nota común como fallback`);
+      // Sin teléfono: nota común como fallback
+      console.log(`[REPLY] Sin teléfono — usando nota común como fallback`);
       await http.post(`/api/v4/leads/${leadId}/notes`, [{
         note_type: 'common',
-        params: { text: mensaje.trim() }
+        params: { text: texto }
       }]);
     }
 
     await pool.query(
       `INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp)
        VALUES ($1, $2, $3, $4, NOW())`,
-      [String(leadId), null, '[Respuesta manual desde dashboard]', mensaje.trim()]
+      [String(leadId), null, '[Respuesta manual desde dashboard]', texto]
     );
 
-    res.json({ ok: true, viaTalk: !!talkId });
+    res.json({ ok: true, viaTwilio: !!telefono });
   } catch (err) {
     console.error('[REPLY]', err.message);
     res.status(500).json({ error: 'Error enviando respuesta: ' + err.message });

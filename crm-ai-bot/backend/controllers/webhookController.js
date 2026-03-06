@@ -1,6 +1,7 @@
 const { pool } = require('../services/database/db');
 const { generarRespuestaAI, extraerIntento } = require('../services/ai/claudeService');
-const { agregarNotaLead, enviarMensajeTalk, obtenerInfoLead, obtenerContactoLead } = require('../services/kommo/kommoService');
+const { agregarNotaLead, obtenerInfoLead, obtenerContactoLead } = require('../services/kommo/kommoService');
+const { enviarSmsTwilio } = require('../services/twilio/twilioService');
 
 async function manejarWebhook(req, res) {
   // Responder inmediatamente a Kommo (evitar timeout)
@@ -142,8 +143,14 @@ async function manejarWebhook(req, res) {
       [respuestaLimpia, convId]
     );
 
-    // Enviar respuesta como mensaje de texto (Talk tipo 103) — llega al cliente como SMS
-    await enviarMensajeTalk(leadId, talkId, respuestaLimpia);
+    // Enviar SMS real via Twilio al número del cliente
+    if (contactTelefono) {
+      await enviarSmsTwilio(contactTelefono, respuestaLimpia);
+    } else {
+      // Sin teléfono: nota común como fallback
+      console.log('[WEBHOOK] Sin teléfono — usando nota común como fallback');
+      await agregarNotaLead(leadId, respuestaLimpia);
+    }
 
     console.log(`[WEBHOOK] Respuesta automática enviada al lead ${leadId}`);
 
