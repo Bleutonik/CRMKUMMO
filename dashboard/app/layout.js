@@ -9,7 +9,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="es">
-      <body className="flex h-screen overflow-hidden bg-base">
+      <body className="flex h-screen overflow-hidden" style={{ background: '#07101f' }}>
         <Sidebar />
         <main className="flex-1 overflow-auto">
           {children}

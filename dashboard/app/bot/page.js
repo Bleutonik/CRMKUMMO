@@ -3,20 +3,17 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 
-function PageHeader({ title, subtitle }) {
+function StatCard({ label, value, color, icon }) {
   return (
-    <div className="mb-8">
-      <h1 className="text-xl font-semibold text-white">{title}</h1>
-      {subtitle && <p className="text-sm text-muted mt-1">{subtitle}</p>}
-    </div>
-  );
-}
-
-function StatItem({ label, value, color = 'text-white' }) {
-  return (
-    <div className="bg-surface border border-border rounded-xl p-5">
-      <div className="text-xs text-muted uppercase tracking-wider mb-2">{label}</div>
-      <div className={`text-2xl font-bold ${color}`}>{value ?? '—'}</div>
+    <div className="card p-5 flex items-start gap-4">
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: 'rgba(255,255,255,.05)' }}>
+        {icon}
+      </div>
+      <div>
+        <div className="text-xs text-muted font-medium uppercase tracking-wider mb-1">{label}</div>
+        <div className={`text-2xl font-bold ${color}`}>{value ?? '—'}</div>
+      </div>
     </div>
   );
 }
@@ -29,83 +26,78 @@ export default function BotPage() {
 
   useEffect(() => {
     Promise.all([api.botStatus(), api.stats()])
-      .then(([bot, s]) => {
-        setActivo(bot.activo);
-        setStats(s.resumen);
-      })
+      .then(([bot, s]) => { setActivo(bot.activo); setStats(s.resumen); })
       .catch(console.error)
       .finally(() => setCargando(false));
   }, []);
 
   const handleToggle = async () => {
     setToggling(true);
-    try {
-      const res = await api.botToggle();
-      setActivo(res.activo);
-    } catch (e) {
-      console.error(e);
-    }
+    try { const res = await api.botToggle(); setActivo(res.activo); }
+    catch (e) { console.error(e); }
     setToggling(false);
   };
 
   return (
-    <div className="p-8 max-w-3xl">
-      <PageHeader
-        title="Bot Control"
-        subtitle="Controla el estado del asistente IA conectado a Kommo."
-      />
+    <div className="page max-w-3xl">
 
-      {/* Toggle principal */}
-      <div className="card mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-base font-semibold text-white mb-1">Estado del bot</div>
-            <div className="text-sm text-muted">
+      {/* Header */}
+      <div className="mb-10">
+        <h1 className="text-2xl font-semibold text-white tracking-tight">Bot Control</h1>
+        <p className="text-sm text-muted mt-1.5">Gestiona el estado del asistente IA conectado a Kommo.</p>
+      </div>
+
+      {/* Toggle card */}
+      <div className="card mb-6">
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="text-base font-semibold text-white">Asistente IA</div>
+              {!cargando && (
+                <span className={`badge text-xs ${activo ? 'badge-success' : 'badge-danger'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${activo ? 'bg-success animate-pulse' : 'bg-danger'}`} />
+                  {activo ? 'Activo' : 'Inactivo'}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted leading-relaxed">
               {cargando
                 ? 'Verificando estado...'
                 : activo
-                  ? 'El bot está respondiendo mensajes de Kommo automáticamente.'
-                  : 'El bot está pausado. Los mensajes no serán respondidos.'
+                  ? 'El bot está respondiendo mensajes automáticamente desde Kommo.'
+                  : 'El bot está pausado. Los mensajes entrantes no recibirán respuesta automática.'
               }
-            </div>
+            </p>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Badge de estado */}
-            {!cargando && (
-              <span className={`badge ${activo ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${activo ? 'bg-success' : 'bg-danger'} animate-pulse`} />
-                {activo ? 'ACTIVO' : 'INACTIVO'}
-              </span>
-            )}
-
-            {/* Toggle switch */}
-            <button
-              onClick={handleToggle}
-              disabled={cargando || toggling}
-              className={`
-                relative w-14 h-7 rounded-full transition-all duration-300 focus:outline-none
-                disabled:opacity-50 disabled:cursor-not-allowed
-                ${activo ? 'bg-success' : 'bg-subtle'}
-              `}
-            >
-              <span className={`
-                absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-300
-                ${activo ? 'translate-x-7' : 'translate-x-0'}
-              `} />
-            </button>
-          </div>
+          {/* Toggle */}
+          <button
+            onClick={handleToggle}
+            disabled={cargando || toggling}
+            className="relative flex-shrink-0 w-14 h-7 rounded-full transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: activo
+                ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                : '#1a2a40',
+              boxShadow: activo ? '0 0 16px rgba(34,197,94,.3)' : 'none',
+            }}
+          >
+            <span
+              className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300"
+              style={{ transform: activo ? 'translateX(28px)' : 'translateX(0)' }}
+            />
+          </button>
         </div>
 
-        {/* Info adicional */}
-        <div className="mt-6 pt-6 border-t border-border grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-muted">Endpoint webhook: </span>
-            <code className="text-accent text-xs bg-accent/10 px-2 py-0.5 rounded">POST /webhook</code>
+        {/* Meta */}
+        <div className="mt-6 pt-5 border-t border-border grid grid-cols-2 gap-4 text-sm">
+          <div className="flex items-center gap-2 text-muted">
+            <span>Webhook:</span>
+            <code className="text-xs text-accent font-mono bg-accent-dim/60 px-2 py-0.5 rounded-lg">POST /webhook</code>
           </div>
-          <div>
-            <span className="text-muted">Modelo IA: </span>
-            <span className="text-white">claude-sonnet-4-6</span>
+          <div className="flex items-center gap-2 text-muted">
+            <span>Modelo:</span>
+            <span className="text-white font-medium">claude-sonnet-4-6</span>
           </div>
         </div>
       </div>
@@ -113,26 +105,29 @@ export default function BotPage() {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatItem
-            label="Total leads"
-            value={stats.total_leads}
-            color="text-accent"
+          <StatCard label="Total leads" value={stats.total_leads} color="text-accent"
+            icon={<svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>}
           />
-          <StatItem
-            label="Conversaciones"
-            value={stats.total_conversaciones}
-            color="text-purple-400"
+          <StatCard label="Conversaciones" value={stats.total_conversaciones} color="text-purple-400"
+            icon={<svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>}
           />
-          <StatItem
-            label="Respuestas IA"
-            value={stats.respuestas_ia}
-            color="text-success"
+          <StatCard label="Respuestas IA" value={stats.respuestas_ia} color="text-success"
+            icon={<svg className="w-5 h-5 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
           />
-          <StatItem
-            label="Errores"
-            value={stats.total_errores}
-            color={stats.total_errores > 0 ? 'text-danger' : 'text-success'}
+          <StatCard label="Errores" value={stats.total_errores} color={stats.total_errores > 0 ? 'text-danger' : 'text-success'}
+            icon={<svg className={`w-5 h-5 ${stats.total_errores > 0 ? 'text-danger' : 'text-success'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>}
           />
+        </div>
+      )}
+
+      {cargando && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card p-5 space-y-3">
+              <div className="skeleton h-3 w-20" />
+              <div className="skeleton h-8 w-16" />
+            </div>
+          ))}
         </div>
       )}
     </div>
