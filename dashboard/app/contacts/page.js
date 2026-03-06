@@ -104,20 +104,28 @@ export default function ContactsPage() {
   const [error, setError] = useState(null);
   const [seleccionado, setSeleccionado] = useState(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
 
-  const buscar = useCallback((q) => {
+  const buscar = useCallback((q, pag = 1) => {
     setCargando(true);
     setError(null);
-    api.contacts(q)
-      .then(data => setContactos(data.contactos || []))
+    api.contacts(q, pag)
+      .then(data => {
+        setContactos(data.contactos || []);
+        setHasMore(data.hasMore || false);
+        setTotal(data.total || 0);
+        setPagina(pag);
+      })
       .catch(e => setError(e.message))
       .finally(() => setCargando(false));
   }, []);
 
-  useEffect(() => { buscar(''); }, [buscar]);
+  useEffect(() => { buscar('', 1); }, [buscar]);
 
   useEffect(() => {
-    const t = setTimeout(() => buscar(busqueda), 400);
+    const t = setTimeout(() => buscar(busqueda, 1), 400);
     return () => clearTimeout(t);
   }, [busqueda, buscar]);
 
@@ -139,7 +147,7 @@ export default function ContactsPage() {
         <div>
           <h1 className="text-xl font-semibold text-white">Contactos</h1>
           <p className="text-sm text-muted mt-1">
-            {cargando ? 'Buscando...' : `${contactos.length} contactos`}
+            {cargando ? 'Buscando...' : `${contactos.length} contactos${total > contactos.length ? ` de ${total.toLocaleString()}` : ''}`}
           </p>
         </div>
         <div className="relative w-80">
@@ -216,6 +224,17 @@ export default function ContactsPage() {
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Paginación */}
+      {(pagina > 1 || hasMore) && !busqueda && (
+        <div className="flex items-center justify-between mt-6">
+          <button onClick={() => buscar(busqueda, pagina - 1)} disabled={pagina <= 1 || cargando}
+            className="btn-ghost text-sm disabled:opacity-30">← Anterior</button>
+          <span className="text-sm text-muted">Página {pagina}</span>
+          <button onClick={() => buscar(busqueda, pagina + 1)} disabled={!hasMore || cargando}
+            className="btn-ghost text-sm disabled:opacity-30">Siguiente →</button>
         </div>
       )}
 

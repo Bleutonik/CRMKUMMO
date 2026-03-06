@@ -14,12 +14,7 @@ async function agregarNotaLead(leadId, texto) {
   try {
     const respuesta = await axios.post(
       `${BASE_URL}/api/v4/leads/${leadId}/notes`,
-      [{
-        note_type: 'common',
-        params: {
-          text: `🤖 Asistente IA:\n\n${texto}`
-        }
-      }],
+      [{ note_type: 'common', params: { text: `🤖 Asistente IA:\n\n${texto}` } }],
       { headers: headers() }
     );
     console.log(`Nota agregada al lead ${leadId}`);
@@ -30,55 +25,50 @@ async function agregarNotaLead(leadId, texto) {
   }
 }
 
+// Sin parámetro 'with' para evitar 404 en Kommo
 async function obtenerInfoLead(leadId) {
   try {
     const respuesta = await axios.get(
-      `${BASE_URL}/api/v4/leads/${leadId}?with=contacts,pipeline,loss_reason`,
-      { headers: headers() }
+      `${BASE_URL}/api/v4/leads/${leadId}`,
+      { headers: headers(), timeout: 8000 }
     );
     const lead = respuesta.data;
-
     return {
-      nombre: lead.name,
-      etapa: lead._embedded?.stages?.name,
-      pipeline: lead._embedded?.pipeline?.name,
-      responsable: lead.responsible_user_id
+      nombre:   lead.name,
+      pipeline: lead.pipeline_id,
     };
   } catch (error) {
-    console.error('Error obteniendo info del lead:', error.response?.data || error.message);
+    console.error('Error obteniendo info del lead:', error.response?.status, error.message);
     return {};
   }
 }
 
 async function obtenerContactoLead(leadId) {
   try {
-    const respuesta = await axios.get(
-      `${BASE_URL}/api/v4/leads/${leadId}?with=contacts`,
-      { headers: headers() }
+    // 1. Obtener lead para conseguir el ID del contacto
+    const respLead = await axios.get(
+      `${BASE_URL}/api/v4/leads/${leadId}`,
+      { headers: headers(), timeout: 8000 }
     );
+    const contactos = respLead.data._embedded?.contacts;
+    if (!contactos?.length) return {};
 
-    const contactos = respuesta.data._embedded?.contacts;
-    if (!contactos || contactos.length === 0) return {};
-
+    // 2. Obtener datos del contacto
     const contactoId = contactos[0].id;
     const respContacto = await axios.get(
       `${BASE_URL}/api/v4/contacts/${contactoId}`,
-      { headers: headers() }
+      { headers: headers(), timeout: 8000 }
     );
 
     const contacto = respContacto.data;
     const campos = contacto.custom_fields_values || [];
-
-    const email = campos.find(c => c.field_code === 'EMAIL')?.values?.[0]?.value;
-    const telefono = campos.find(c => c.field_code === 'PHONE')?.values?.[0]?.value;
-
     return {
-      nombre: contacto.name,
-      email,
-      telefono
+      nombre:   contacto.name,
+      email:    campos.find(c => c.field_code === 'EMAIL')?.values?.[0]?.value || null,
+      telefono: campos.find(c => c.field_code === 'PHONE')?.values?.[0]?.value || null,
     };
   } catch (error) {
-    console.error('Error obteniendo contacto:', error.response?.data || error.message);
+    console.error('Error obteniendo contacto:', error.response?.status, error.message);
     return {};
   }
 }
