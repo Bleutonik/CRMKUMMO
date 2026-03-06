@@ -48,13 +48,13 @@ async function obtenerLeadsCRM(req, res) {
 async function obtenerPipelines(req, res) {
   try {
     const client = http();
-    const r = await client.get('/api/v4/pipelines');
+    const r = await client.get('/api/v4/leads/pipelines');
     const pipelines = r.data?._embedded?.pipelines || [];
 
     // Fetch statuses for each pipeline separately
     const withStatuses = await Promise.all(pipelines.map(async (pip) => {
       try {
-        const sr = await client.get(`/api/v4/pipelines/${pip.id}/statuses`);
+        const sr = await client.get(`/api/v4/leads/pipelines/${pip.id}/statuses`);
         const statuses = sr.data?._embedded?.statuses || [];
         const statusMap = {};
         statuses.forEach(s => { statusMap[s.id] = s; });
