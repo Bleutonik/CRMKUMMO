@@ -82,10 +82,16 @@ async function inicializarDB() {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         lead_id TEXT,
         contact_name TEXT,
+        contact_phone VARCHAR(50),
         mensaje_cliente TEXT,
         respuesta_bot TEXT,
         timestamp TIMESTAMP DEFAULT NOW()
       )
+    `);
+
+    // Agregar contact_phone si ya existía la tabla sin esa columna
+    await cliente.query(`
+      ALTER TABLE conversations ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(50)
     `);
 
     await cliente.query(`

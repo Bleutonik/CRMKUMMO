@@ -200,27 +200,43 @@ async function sincronizarContactos(req, res) {
   }
 }
 
-// Obtiene el teléfono del contacto asociado a un lead
+// Obtiene el teléfono del cliente para un lead — múltiples fuentes
 async function obtenerTelefonoLead(http, leadId) {
+  // 1. Buscar en nuestra DB (guardado cuando el cliente envió el primer SMS)
   try {
-    // with=contacts es necesario para que Kommo devuelva los contactos embebidos
-    const respLead = await http.get(`/api/v4/leads/${leadId}?with=contacts`);
-    const contactos = respLead.data._embedded?.contacts;
-    console.log(`[REPLY] Contactos embebidos en lead ${leadId}:`, JSON.stringify(contactos));
-    const contactoId = contactos?.[0]?.id;
-    if (!contactoId) {
-      console.log(`[REPLY] Lead ${leadId} sin contacto asociado`);
-      return null;
+    const { rows } = await pool.query(
+      `SELECT contact_phone FROM conversations
+       WHERE lead_id = $1 AND contact_phone IS NOT NULL
+       ORDER BY timestamp DESC LIMIT 1`,
+      [String(leadId)]
+    );
+    if (rows[0]?.contact_phone) {
+      console.log(`[REPLY] Teléfono encontrado en DB: ${rows[0].contact_phone}`);
+      return rows[0].contact_phone;
     }
-    const respContacto = await http.get(`/api/v4/contacts/${contactoId}`);
-    const campos = respContacto.data.custom_fields_values || [];
-    console.log(`[REPLY] Campos contacto ${contactoId}:`, JSON.stringify(campos.map(f => ({ code: f.field_code, val: f.values?.[0]?.value }))));
-    const telefono = campos.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null;
-    return telefono;
   } catch (e) {
-    console.error(`[REPLY] Error obteniendo teléfono del lead ${leadId}:`, e.response?.status, e.message);
-    return null;
+    console.log(`[REPLY] DB lookup error:`, e.message);
   }
+
+  // 2. Buscar en el contacto de Kommo
+  try {
+    const respLead = await http.get(`/api/v4/leads/${leadId}?with=contacts`);
+    const contactoId = respLead.data._embedded?.contacts?.[0]?.id;
+    if (contactoId) {
+      const respContacto = await http.get(`/api/v4/contacts/${contactoId}`);
+      const campos = respContacto.data.custom_fields_values || [];
+      const tel = campos.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null;
+      if (tel) {
+        console.log(`[REPLY] Teléfono encontrado en contacto Kommo: ${tel}`);
+        return tel;
+      }
+    }
+  } catch (e) {
+    console.log(`[REPLY] Kommo contact lookup error:`, e.message);
+  }
+
+  console.log(`[REPLY] No se encontró teléfono para lead ${leadId}`);
+  return null;
 }
 
 // POST /api/reply  { leadId, mensaje }

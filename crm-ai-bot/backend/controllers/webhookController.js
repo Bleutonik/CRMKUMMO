@@ -89,12 +89,12 @@ async function manejarWebhook(req, res) {
       contactTelefono = infoContacto.telefono || null;
     } catch {}
 
-    // SIEMPRE guardar el mensaje (independiente del estado del bot)
+    // SIEMPRE guardar el mensaje con el teléfono del cliente para poder responder después
     const insertResult = await pool.query(`
-      INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot)
-      VALUES ($1, $2, $3, NULL)
+      INSERT INTO conversations (lead_id, contact_name, contact_phone, mensaje_cliente, respuesta_bot)
+      VALUES ($1, $2, $3, $4, NULL)
       RETURNING id
-    `, [leadId, contactName, textoMensaje]);
+    `, [leadId, contactName, contactTelefono, textoMensaje]);
 
     const convId = insertResult.rows[0].id;
     console.log(`[WEBHOOK] Mensaje guardado en conversations (id: ${convId})`);
