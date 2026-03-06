@@ -141,6 +141,7 @@ export default function ConversationsPage() {
   const [error, setError] = useState(null);
   const [busqueda, setBusqueda] = useState('');
   const [chatAbierto, setChatAbierto] = useState(null);
+  const [filtroTab, setFiltroTab] = useState('todos');
 
   const cargar = () => {
     setCargando(true);
@@ -173,12 +174,23 @@ export default function ConversationsPage() {
   const contactos = Object.values(grupos)
     .sort((a, b) => new Date(b.ultimo) - new Date(a.ultimo));
 
-  const filtrados = contactos.filter(c =>
-    !busqueda ||
-    String(c.lead_id).includes(busqueda) ||
-    c.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-    c.mensajes.some(m => m.mensaje_cliente?.toLowerCase().includes(busqueda.toLowerCase()))
-  );
+  const filtrados = contactos.filter(c => {
+    const ultimo = [...c.mensajes].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    const tieneRespuesta = !!ultimo?.respuesta_bot;
+
+    if (filtroTab === 'sin_respuesta' && tieneRespuesta) return false;
+    if (filtroTab === 'respondido' && !tieneRespuesta) return false;
+
+    return !busqueda ||
+      String(c.lead_id).includes(busqueda) ||
+      c.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+      c.mensajes.some(m => m.mensaje_cliente?.toLowerCase().includes(busqueda.toLowerCase()));
+  });
+
+  const sinRespuestaCount = contactos.filter(c => {
+    const ultimo = [...c.mensajes].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    return !ultimo?.respuesta_bot;
+  }).length;
 
   const contactoActivo = chatAbierto ? grupos[chatAbierto] : null;
 
@@ -198,6 +210,31 @@ export default function ConversationsPage() {
           onChange={e => setBusqueda(e.target.value)}
           className="input w-72"
         />
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 bg-surface border border-border rounded-xl p-1 w-fit">
+        {[
+          { key: 'todos',         label: 'Todos',              count: contactos.length },
+          { key: 'sin_respuesta', label: 'Sin respuesta',      count: sinRespuestaCount, dot: true },
+          { key: 'respondido',    label: 'Respondido con IA',  count: contactos.length - sinRespuestaCount },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setFiltroTab(tab.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              filtroTab === tab.key ? 'bg-accent text-white' : 'text-muted hover:text-white'
+            }`}
+          >
+            {tab.dot && filtroTab !== tab.key && sinRespuestaCount > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+            )}
+            {tab.label}
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+              filtroTab === tab.key ? 'bg-white/20' : 'bg-white/5'
+            }`}>{tab.count}</span>
+          </button>
+        ))}
       </div>
 
       {error && (
@@ -260,7 +297,10 @@ export default function ConversationsPage() {
                   </td>
                   <td className="px-5 py-4 text-muted text-xs">{tiempoRelativo(c.ultimo)}</td>
                   <td className="px-5 py-4">
-                    <span className="text-xs text-accent opacity-0 group-hover:opacity-100">Ver →</span>
+                    {ultimo?.respuesta_bot
+                      ? <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">Respondido</span>
+                      : <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">Sin respuesta</span>
+                    }
                   </td>
                 </tr>
               );
