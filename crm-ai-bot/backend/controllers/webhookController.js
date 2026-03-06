@@ -87,6 +87,56 @@ async function manejarWebhook(req, res) {
       console.log(`[WEBHOOK] Mensaje entrante tipo ${tipo} detectado, talk_id: ${talkId}`);
 
     } else {
+      // Intentar capturar mensajes salientes de agentes via talk.update
+      const talkUpdate = cuerpo?.talk?.update?.[0];
+      if (talkUpdate) {
+        const entityId = String(talkUpdate.entity_id || '');
+        const chatId   = talkUpdate.chat_id || null;
+        console.log(`[WEBHOOK] talk.update — lead: ${entityId}, chat_id: ${chatId}`);
+
+        if (entityId && chatId) {
+          // Buscar el último mensaje saliente en este chat via Kommo Chats API
+          try {
+            const axios = require('axios');
+            const _sub = process.env.KOMMO_SUBDOMAIN || '';
+            const BASE = process.env.KOMMO_BASE_URL || (_sub.includes('.') ? `https://${_sub}` : `https://${_sub}.kommo.com`);
+            const TOKEN = process.env.KOMMO_ACCESS_TOKEN || process.env.KOMMO_TOKEN;
+
+            const resp = await axios.get(`${BASE}/api/v4/chats/${chatId}/messages`, {
+              headers: { Authorization: `Bearer ${TOKEN}` },
+              params: { limit: 5 },
+              timeout: 8000
+            });
+            const mensajes = resp.data?._embedded?.messages || [];
+            console.log(`[TALK] Chat ${chatId}: ${mensajes.length} mensajes recientes`);
+
+            // Guardar mensajes salientes de agentes que no hayamos guardado ya
+            for (const msg of mensajes) {
+              if (msg.type !== 'outgoing') continue;
+              const texto = msg.content?.text || msg.text || null;
+              if (!texto) continue;
+              // Evitar duplicar mensajes del bot
+              if (texto.startsWith('🤖 Asistente IA:') || texto.startsWith('📱 ')) continue;
+
+              const existe = await pool.query(
+                `SELECT id FROM conversations WHERE lead_id=$1 AND respuesta_bot=$2 AND timestamp > NOW() - INTERVAL '5 minutes'`,
+                [entityId, texto]
+              );
+              if (existe.rows.length === 0) {
+                await pool.query(
+                  `INSERT INTO conversations (lead_id, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1, NULL, $2, NOW())`,
+                  [entityId, texto]
+                );
+                console.log(`[TALK] Mensaje saliente guardado para lead ${entityId}: "${texto.slice(0,60)}"`);
+              }
+            }
+          } catch (e) {
+            console.log(`[TALK] Error obteniendo mensajes del chat ${chatId}: ${e.response?.status} ${e.message}`);
+          }
+        }
+        return;
+      }
+
       console.log('[WEBHOOK] Formato de payload no reconocido, ignorando');
       return;
     }
