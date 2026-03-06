@@ -78,9 +78,11 @@ function LeadDetalle({ id, onClose }) {
   const [cambiandoEtapa, setCambiandoEtapa] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.leadDetalle(id), api.pipelines()])
-      .then(([l, p]) => { setLead(l); setPipelines(p.pipelines || []); })
-      .catch(console.error)
+    Promise.allSettled([api.leadDetalle(id), api.pipelines()])
+      .then(([lr, pr]) => {
+        if (lr.status === 'fulfilled') setLead(lr.value);
+        if (pr.status === 'fulfilled') setPipelines(pr.value.pipelines || []);
+      })
       .finally(() => setCargando(false));
   }, [id]);
 
