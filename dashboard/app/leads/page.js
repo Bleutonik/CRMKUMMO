@@ -275,12 +275,13 @@ export default function LeadsPage() {
               <th className="text-left px-5 py-3.5 text-xs font-medium text-muted uppercase tracking-wider">Estado</th>
               <th className="text-right px-5 py-3.5 text-xs font-medium text-muted uppercase tracking-wider">Valor</th>
               <th className="text-left px-5 py-3.5 text-xs font-medium text-muted uppercase tracking-wider">Creado</th>
+              <th className="text-left px-5 py-3.5 text-xs font-medium text-muted uppercase tracking-wider">Últ. actividad</th>
               <th className="px-5 py-3.5"></th>
             </tr>
           </thead>
           <tbody>
             {cargando && (
-              <tr><td colSpan={7} className="px-5 py-12 text-center text-muted">
+              <tr><td colSpan={8} className="px-5 py-12 text-center text-muted">
                 <div className="flex items-center justify-center gap-2">
                   <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
                   Cargando leads...
@@ -288,7 +289,7 @@ export default function LeadsPage() {
               </td></tr>
             )}
             {!cargando && leads.length === 0 && (
-              <tr><td colSpan={7} className="px-5 py-12 text-center text-muted">Sin leads</td></tr>
+              <tr><td colSpan={8} className="px-5 py-12 text-center text-muted">Sin leads</td></tr>
             )}
             {leads.map(lead => (
               <tr key={lead.id} className="border-b border-border/50 hover:bg-white/2 transition-colors">
@@ -301,6 +302,7 @@ export default function LeadsPage() {
                 <td className="px-5 py-4"><EstadoBadge statusId={lead.status_id} /></td>
                 <td className="px-5 py-4 text-right font-medium text-emerald-400">{formatValor(lead.valor)}</td>
                 <td className="px-5 py-4 text-muted text-xs">{formatFecha(lead.creado_en)}</td>
+                <td className="px-5 py-4 text-muted text-xs">{formatFecha(lead.actualizado)}</td>
                 <td className="px-5 py-4">
                   <button
                     onClick={() => setDetalle(lead.id)}
