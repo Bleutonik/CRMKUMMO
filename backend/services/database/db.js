@@ -111,6 +111,23 @@ async function inicializarDB() {
     `);
 
     await cliente.query(`
+      CREATE TABLE IF NOT EXISTS alertas (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        lead_id TEXT,
+        contact_name TEXT,
+        mensaje_cliente TEXT,
+        respuesta_bot TEXT,
+        tipo VARCHAR(50) DEFAULT 'intencion_compra',
+        leida BOOLEAN DEFAULT FALSE,
+        timestamp TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await cliente.query(`
+      CREATE INDEX IF NOT EXISTS idx_alertas_leida ON alertas(leida, timestamp DESC);
+    `);
+
+    await cliente.query(`
       CREATE INDEX IF NOT EXISTS idx_mensajes_conversacion_id ON mensajes(conversacion_id);
       CREATE INDEX IF NOT EXISTS idx_conversaciones_kommo_lead_id ON conversaciones(kommo_lead_id);
       CREATE INDEX IF NOT EXISTS idx_leads_kommo_lead_id ON leads(kommo_lead_id);

@@ -171,7 +171,10 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
 
     // El system prompt combina: prompt base + contexto lead + conocimiento general +
     // ejemplos similares + conocimiento específico relevante al mensaje
+    const instruccionIntento = `\n\nINSTRUCCIÓN ESPECIAL: Si el cliente muestra intención clara de compra o reserva (dice que quiere reservar, confirmar, dar sus datos, proceder con el pago, o está listo para hacerlo), agrega exactamente el texto [INTENT:COMPRA] al final de tu respuesta, después de todo el contenido. No lo muestres al cliente de forma visible — solo agrégalo al final sin explicación.`;
+
     const systemPrompt = promptSistema
+      + instruccionIntento
       + (contextoTexto ? `\n\nDatos del contacto:${contextoTexto}` : '')
       + conocimientoGeneral
       + (conocimientoRelevante || '')
@@ -211,4 +214,14 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
   }
 }
 
-module.exports = { generarRespuestaAI };
+/**
+ * Extrae el tag de intención de compra del texto del bot.
+ * Devuelve { texto: respuesta limpia, tieneIntento: bool }
+ */
+function extraerIntento(respuesta) {
+  const tieneIntento = respuesta.includes('[INTENT:COMPRA]');
+  const texto = respuesta.replace('[INTENT:COMPRA]', '').trim();
+  return { texto, tieneIntento };
+}
+
+module.exports = { generarRespuestaAI, extraerIntento };

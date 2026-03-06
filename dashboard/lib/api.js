@@ -69,6 +69,10 @@ export const api = {
   entrenarKommo:    ()              => req('/api/admin/train-from-kommo',  { method: 'POST' }),
   aprenderDB:       ()              => req('/api/admin/learn-from-db',      { method: 'POST' }),
   syncContactos:    ()              => req('/api/admin/sync-contacts',      { method: 'POST' }),
+  // Alertas
+  alertas:          ()              => req('/api/alertas'),
+  marcarLeida:      (id)            => req(`/api/alertas/${id}/leida`, { method: 'PATCH' }),
+  leerTodas:        ()              => req('/api/alertas/leer-todas', { method: 'POST' }),
   // Auth
   login:            (email, pass)   => req('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password: pass }) }),
   authMe:           ()              => req('/api/auth/me'),

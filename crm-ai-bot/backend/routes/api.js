@@ -65,7 +65,13 @@ router.post('/admin/import-kommo', importarHistorial);
 router.post('/admin/extract-knowledge', extraerConocimiento);
 
 const { entrenarDesdeKommo, aprenderDeConversacionesDB } = require('../controllers/trainController');
+const { obtenerAlertas, marcarLeida, marcarTodasLeidas } = require('../controllers/alertasController');
 router.post('/admin/train-from-kommo', entrenarDesdeKommo);
+
+// Alertas de intención de compra
+router.get('/alertas', obtenerAlertas);
+router.patch('/alertas/:id/leida', marcarLeida);
+router.post('/alertas/leer-todas', marcarTodasLeidas);
 router.post('/admin/learn-from-db', aprenderDeConversacionesDB);
 
 module.exports = router;

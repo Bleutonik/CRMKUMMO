@@ -1,5 +1,5 @@
 const { pool } = require('../services/database/db');
-const { generarRespuestaAI } = require('../services/ai/claudeService');
+const { generarRespuestaAI, extraerIntento } = require('../services/ai/claudeService');
 const { agregarNotaLead, obtenerInfoLead, obtenerContactoLead } = require('../services/kommo/kommoService');
 
 async function manejarWebhook(req, res) {
@@ -122,14 +122,26 @@ async function manejarWebhook(req, res) {
       ...contexto
     });
 
-    // Actualizar la fila con la respuesta del bot
+    // Detectar intención de compra y limpiar el tag de la respuesta
+    const { texto: respuestaLimpia, tieneIntento } = extraerIntento(respuestaIA);
+
+    // Guardar alerta si hay intención de compra
+    if (tieneIntento) {
+      await pool.query(
+        'INSERT INTO alertas (lead_id, contact_name, mensaje_cliente, respuesta_bot, tipo) VALUES ($1,$2,$3,$4,$5)',
+        [leadId, contactName, textoMensaje, respuestaLimpia, 'intencion_compra']
+      );
+      console.log(`[WEBHOOK] ⚡ Alerta de intención de compra guardada — lead ${leadId}`);
+    }
+
+    // Actualizar la fila con la respuesta limpia (sin el tag)
     await pool.query(
       'UPDATE conversations SET respuesta_bot = $1 WHERE id = $2',
-      [respuestaIA, convId]
+      [respuestaLimpia, convId]
     );
 
-    // Enviar respuesta a Kommo como nota
-    await agregarNotaLead(leadId, respuestaIA);
+    // Enviar respuesta a Kommo (sin el tag)
+    await agregarNotaLead(leadId, respuestaLimpia);
 
     console.log(`[WEBHOOK] Respuesta automática enviada al lead ${leadId}`);
 

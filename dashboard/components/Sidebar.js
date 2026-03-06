@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
 import { getUsuario, removeToken, isAdmin } from '../lib/auth';
+import { api } from '../lib/api';
 
 const nav = [
   {
@@ -67,10 +69,64 @@ const nav = [
   },
 ];
 
+function tiempoRelativo(ts) {
+  const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (diff < 60) return 'hace un momento';
+  if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
+  return new Date(ts).toLocaleDateString('es-ES');
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const usuario = getUsuario();
+
+  const [alertas, setAlertas] = useState([]);
+  const [noLeidas, setNoLeidas] = useState(0);
+  const [panelAbierto, setPanelAbierto] = useState(false);
+  const panelRef = useRef(null);
+
+  // Polling cada 20 segundos
+  useEffect(() => {
+    const cargar = async () => {
+      try {
+        const data = await api.alertas();
+        setAlertas(data.alertas || []);
+        setNoLeidas(data.noLeidas || 0);
+      } catch {}
+    };
+    cargar();
+    const interval = setInterval(cargar, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Cerrar panel al hacer click fuera
+  useEffect(() => {
+    const handler = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) {
+        setPanelAbierto(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const marcarLeida = async (id) => {
+    try {
+      await api.marcarLeida(id);
+      setAlertas(prev => prev.map(a => a.id === id ? { ...a, leida: true } : a));
+      setNoLeidas(prev => Math.max(0, prev - 1));
+    } catch {}
+  };
+
+  const leerTodas = async () => {
+    try {
+      await api.leerTodas();
+      setAlertas(prev => prev.map(a => ({ ...a, leida: true })));
+      setNoLeidas(0);
+    } catch {}
+  };
 
   const logout = () => {
     removeToken();
@@ -78,13 +134,13 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-60 flex-shrink-0 flex flex-col" style={{
+    <aside className="w-60 flex-shrink-0 flex flex-col relative" style={{
       background: 'linear-gradient(180deg, #0a1628 0%, #07101f 100%)',
       borderRight: '1px solid rgba(255,255,255,.06)',
     }}>
 
-      {/* Logo */}
-      <div className="px-5 py-5">
+      {/* Logo + campana */}
+      <div className="px-5 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #5b95f9, #3a6fd8)', boxShadow: '0 4px 12px rgba(79,142,247,.4)' }}>
@@ -94,6 +150,94 @@ export default function Sidebar() {
             <div className="text-sm font-semibold text-white leading-none">CRM AI Bot</div>
             <div className="text-[11px] text-muted mt-0.5 leading-none">Fix A Trip</div>
           </div>
+        </div>
+
+        {/* Campana de alertas */}
+        <div ref={panelRef} className="relative">
+          <button
+            onClick={() => setPanelAbierto(v => !v)}
+            className="relative p-1.5 rounded-lg text-muted hover:text-white hover:bg-white/5 transition-colors"
+            title="Alertas de intención de compra"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            {noLeidas > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[10px] font-bold text-white flex items-center justify-center animate-pulse"
+                style={{ background: '#ef4444' }}>
+                {noLeidas > 9 ? '9+' : noLeidas}
+              </span>
+            )}
+          </button>
+
+          {/* Panel de alertas */}
+          {panelAbierto && (
+            <div className="absolute left-0 top-10 w-80 rounded-xl border shadow-2xl z-50 overflow-hidden"
+              style={{ background: '#0f1c2e', borderColor: '#182840', boxShadow: '0 20px 60px rgba(0,0,0,.6)' }}>
+
+              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: '#182840' }}>
+                <div>
+                  <div className="text-sm font-semibold text-white">Posibles ventas</div>
+                  <div className="text-xs text-muted">Clientes con intención de compra</div>
+                </div>
+                {noLeidas > 0 && (
+                  <button onClick={leerTodas} className="text-xs text-accent hover:text-white transition-colors">
+                    Marcar todas leídas
+                  </button>
+                )}
+              </div>
+
+              <div className="overflow-y-auto" style={{ maxHeight: '360px' }}>
+                {alertas.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted">
+                    Sin alertas por ahora
+                  </div>
+                ) : (
+                  alertas.map(alerta => (
+                    <div key={alerta.id}
+                      className="px-4 py-3 border-b transition-colors"
+                      style={{
+                        borderColor: '#182840',
+                        background: alerta.leida ? 'transparent' : 'rgba(79,142,247,.06)'
+                      }}>
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-2">
+                          {!alerta.leida && (
+                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5" style={{ background: '#ef4444' }} />
+                          )}
+                          <span className="text-xs font-semibold text-white">
+                            {alerta.contact_name || `Lead ${alerta.lead_id}`}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-muted flex-shrink-0">{tiempoRelativo(alerta.timestamp)}</span>
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed mb-2 line-clamp-2 ml-3.5">
+                        "{alerta.mensaje_cliente}"
+                      </p>
+                      <div className="flex items-center gap-2 ml-3.5">
+                        <Link
+                          href="/conversations"
+                          onClick={() => { marcarLeida(alerta.id); setPanelAbierto(false); }}
+                          className="text-[11px] text-accent hover:text-white transition-colors font-medium"
+                        >
+                          Ver conversación →
+                        </Link>
+                        {!alerta.leida && (
+                          <button
+                            onClick={() => marcarLeida(alerta.id)}
+                            className="text-[11px] text-muted hover:text-white transition-colors"
+                          >
+                            Marcar leída
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
