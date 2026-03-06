@@ -141,11 +141,14 @@ async function obtenerLeadDetalle(req, res) {
     }
 
     // Notas de Kommo (notas internas, llamadas, emails, etc.)
-    const notasKommo = (notasR.status === 'fulfilled'
+    const rawNotasKommo = notasR.status === 'fulfilled'
       ? notasR.value.data?._embedded?.notes || []
-      : []
-    ).map(n => {
-       let texto = n.params?.text || null;
+      : [];
+
+    console.log(`[LEAD ${id}] Kommo notes API devolvió ${rawNotasKommo.length} notas. Tipos: ${rawNotasKommo.map(n => n.note_type).join(', ')}`);
+
+    const notasKommo = rawNotasKommo.map(n => {
+       let texto = n.params?.text || n.text || null;
        if (typeof texto === 'string' && texto.startsWith('{')) {
          try { texto = JSON.parse(texto).content_summary || texto; } catch {}
        }
@@ -163,6 +166,7 @@ async function obtenerLeadDetalle(req, res) {
      .filter(n => !n.texto.startsWith('🤖 Asistente IA:') && !n.texto.startsWith('📱 '));
 
     // Mensajes SMS de nuestra DB (Twilio — entrantes y salientes vía bot/dashboard)
+    console.log(`[LEAD ${id}] Kommo notes mostradas: ${notasKommo.length} (filtradas desde ${rawNotasKommo.length})`);
     const dbResult = await pool.query(
       `SELECT mensaje_cliente, respuesta_bot, timestamp FROM conversations
        WHERE lead_id = $1 ORDER BY timestamp ASC`,
@@ -180,6 +184,7 @@ async function obtenerLeadDetalle(req, res) {
       }
     }
 
+    console.log(`[LEAD ${id}] DB mensajes: ${mensajesDB.length}`);
     // Mezclar y ordenar cronológicamente
     const notas = [...mensajesDB, ...notasKommo]
       .filter(n => n.creado_en)
