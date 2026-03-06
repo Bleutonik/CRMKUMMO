@@ -69,25 +69,34 @@ function ReplyBox({ leadId, onSent }) {
   );
 }
 
-function ChatPanel({ contacto, mensajes, onClose, onSent }) {
+function ChatPanel({ contacto, onClose, onSent }) {
   const bottomRef = useRef(null);
+  const [notas, setNotas] = useState(null); // null = cargando
+  const [errorNotas, setErrorNotas] = useState(null);
+
+  const cargarNotas = () => {
+    api.leadDetalle(contacto.lead_id)
+      .then(d => setNotas(d.notas || []))
+      .catch(e => { setErrorNotas(e.message); setNotas([]); });
+  };
+
+  useEffect(() => { cargarNotas(); }, [contacto.lead_id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [mensajes]);
+  }, [notas]);
+
+  const handleSent = () => { cargarNotas(); onSent?.(); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-end" onClick={onClose}>
-      <div
-        className="w-full max-w-lg bg-surface border-l border-border flex flex-col shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
+      <div className="w-full max-w-lg bg-surface border-l border-border flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
             <div className="font-semibold text-white">{contacto.nombre || 'Sin nombre'}</div>
             <div className="text-xs text-muted mt-0.5">
-              Lead #{contacto.lead_id} · {mensajes.length} mensaje{mensajes.length !== 1 ? 's' : ''}
+              Lead #{contacto.lead_id} · {notas ? `${notas.length} mensajes` : 'Cargando...'}
             </div>
           </div>
           <button onClick={onClose} className="text-muted hover:text-white p-1 transition-colors">
@@ -97,39 +106,47 @@ function ChatPanel({ contacto, mensajes, onClose, onSent }) {
           </button>
         </div>
 
-        {/* Mensajes */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {mensajes.map((m, i) => (
-            <div key={i} className="space-y-2">
-              {/* Mensaje del cliente */}
-              {m.mensaje_cliente && m.mensaje_cliente !== '[Respuesta manual desde dashboard]' && (
-                <div className="flex justify-start">
-                  <div className="max-w-[80%]">
-                    <div className="bg-white/10 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-slate-200 leading-relaxed">
-                      {m.mensaje_cliente}
-                    </div>
-                    <div className="text-xs text-muted mt-1 ml-1">{tiempoRelativo(m.timestamp)}</div>
-                  </div>
-                </div>
-              )}
-              {/* Respuesta del bot / manual */}
-              {m.respuesta_bot && (
-                <div className="flex justify-end">
-                  <div className="max-w-[80%]">
-                    <div className="bg-accent/20 border border-accent/30 rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white leading-relaxed">
-                      {m.respuesta_bot}
-                    </div>
-                    <div className="text-xs text-muted mt-1 mr-1 text-right">{formatFecha(m.timestamp)}</div>
-                  </div>
-                </div>
-              )}
+        {/* Mensajes desde Kommo */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {notas === null && (
+            <div className="flex items-center justify-center py-12 text-muted text-sm gap-2">
+              <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              Cargando historial...
             </div>
-          ))}
+          )}
+          {errorNotas && <p className="text-danger text-xs text-center py-4">{errorNotas}</p>}
+          {notas?.length === 0 && <p className="text-muted text-sm text-center py-8">Sin mensajes</p>}
+          {notas?.map((n, i) => {
+            const esCliente = n.rol === 'cliente';
+            const esNota    = n.rol === 'nota';
+            if (esNota) return (
+              <div key={i} className="flex justify-center">
+                <div className="bg-white/5 border border-border rounded-lg px-3 py-1.5 max-w-[85%] text-center">
+                  <div className="text-xs text-muted italic">{n.texto}</div>
+                  <div className="text-[10px] text-muted/50 mt-0.5">{formatFecha(n.creado_en)}</div>
+                </div>
+              </div>
+            );
+            return (
+              <div key={i} className={`flex ${esCliente ? 'justify-start' : 'justify-end'}`}>
+                <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                  esCliente
+                    ? 'bg-white/10 text-slate-200 rounded-tl-sm'
+                    : 'bg-accent/20 border border-accent/30 text-white rounded-tr-sm'
+                }`}>
+                  <div className="text-sm leading-relaxed whitespace-pre-wrap">{n.texto}</div>
+                  <div className={`text-[10px] mt-1 ${esCliente ? 'text-muted' : 'text-accent/60 text-right'}`}>
+                    {tiempoRelativo(n.creado_en)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
           <div ref={bottomRef} />
         </div>
 
         {/* Reply box */}
-        <ReplyBox leadId={contacto.lead_id} onSent={onSent} />
+        <ReplyBox leadId={contacto.lead_id} onSent={handleSent} />
       </div>
     </div>
   );
@@ -312,7 +329,6 @@ export default function ConversationsPage() {
       {contactoActivo && (
         <ChatPanel
           contacto={contactoActivo}
-          mensajes={[...contactoActivo.mensajes].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))}
           onClose={() => setChatAbierto(null)}
           onSent={cargar}
         />
