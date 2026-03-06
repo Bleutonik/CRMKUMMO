@@ -101,23 +101,18 @@ async function eliminarConocimiento(req, res) {
 }
 
 async function probarBot(req, res) {
-  const { mensaje } = req.body;
+  const { mensaje, historial = [] } = req.body;
   if (!mensaje?.trim()) return res.status(400).json({ error: 'Mensaje requerido' });
-
-  console.log('[BOT-TEST] Mensaje recibido:', mensaje.trim().slice(0, 80));
-  console.log('[BOT-TEST] CLAUDE_API_KEY presente:', !!process.env.CLAUDE_API_KEY);
 
   try {
     const respuesta = await generarRespuestaAI(mensaje.trim(), {
       leadId: 'test',
-      contactName: 'Prueba'
+      contactName: 'Prueba',
+      historialExterno: historial  // pasar historial del chat directamente
     });
-    console.log('[BOT-TEST] Respuesta generada OK, longitud:', respuesta?.length);
     res.json({ respuesta });
   } catch (error) {
-    console.error('[BOT-TEST] Error tipo:', error.constructor?.name);
-    console.error('[BOT-TEST] Error mensaje:', error.message);
-    console.error('[BOT-TEST] Error stack:', error.stack?.split('\n').slice(0,3).join(' | '));
+    console.error('[BOT-TEST] Error:', error.message);
     res.status(500).json({ error: 'Error generando respuesta', detalle: error.message });
   }
 }

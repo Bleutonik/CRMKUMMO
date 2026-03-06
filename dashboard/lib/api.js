@@ -44,7 +44,7 @@ export const api = {
   updatePrompt:     (valor)         => req('/api/prompts', { method: 'POST', body: JSON.stringify({ clave: 'prompt_sistema', valor }) }),
   botStatus:        ()              => req('/api/bot-status'),
   botToggle:        ()              => req('/api/bot-toggle', { method: 'POST' }),
-  botTest:          (msg)           => req('/api/bot-test', { method: 'POST', body: JSON.stringify({ mensaje: msg }) }, 45000),
+  botTest:          (msg, hist)     => req('/api/bot-test', { method: 'POST', body: JSON.stringify({ mensaje: msg, historial: hist || [] }) }, 45000),
   // Conversaciones
   conversations:    ()              => req('/api/conversations'),
   reply:            (leadId, msg)   => req('/api/reply', { method: 'POST', body: JSON.stringify({ leadId, mensaje: msg }) }),

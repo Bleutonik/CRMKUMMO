@@ -144,7 +144,12 @@ Responde de manera natural y profesional, como lo haría un asesor de viajes exp
     setMensajes(prev => [...prev, { rol: 'bot', texto: '', cargando: true }]);
 
     try {
-      const data = await api.botTest(texto);
+      // Construir historial en formato que Claude entiende (sin la burbuja de "cargando")
+      const historialActual = mensajes
+        .filter(m => !m.cargando && m.texto)
+        .map(m => ({ role: m.rol === 'bot' ? 'assistant' : 'user', content: m.texto }));
+
+      const data = await api.botTest(texto, historialActual);
       setMensajes(prev => [
         ...prev.slice(0, -1), // quitar burbuja de cargando
         { rol: 'bot', texto: data.respuesta }

@@ -147,15 +147,18 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
   let promptSistema = 'Eres un asistente de ventas profesional y amigable.';
   try {
     console.log('[AI] Iniciando generarRespuestaAI para lead:', contexto.leadId);
-    const [_prompt, conocimientoGeneral, historial, ejemplos, conocimientoRelevante] = await Promise.all([
+    const [_prompt, conocimientoGeneral, historialDB, ejemplos, conocimientoRelevante] = await Promise.all([
       obtenerPromptSistema(),
       obtenerConocimiento(),
-      obtenerHistorial(contexto.leadId),
+      contexto.historialExterno ? Promise.resolve([]) : obtenerHistorial(contexto.leadId),
       obtenerEjemplosRelevantes(mensaje, contexto.leadId),
       obtenerConocimientoRelevante(mensaje)
     ]);
     promptSistema = _prompt;
-    console.log('[AI] Contexto cargado. Llamando a Claude...');
+    // Usar historial externo (chat de prueba) o el de la DB (conversaciones reales)
+    const historial = contexto.historialExterno?.length > 0
+      ? contexto.historialExterno
+      : historialDB;
 
     // Construir contexto completo del lead/contacto
     let contextoTexto = '';
