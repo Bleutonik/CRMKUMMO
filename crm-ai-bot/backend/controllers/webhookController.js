@@ -9,7 +9,8 @@ async function manejarWebhook(req, res) {
 
   try {
     const cuerpo = req.body;
-    console.log('[WEBHOOK] Datos recibidos:', JSON.stringify(cuerpo, null, 2));
+    const tipoEvento = Object.keys(cuerpo).filter(k => k !== 'account').join(',');
+    console.log(`[WEBHOOK] Evento: ${tipoEvento}`);
 
     // --- Formato 1: Twilio / WhatsApp (message.add) ---
     const msgTwilio = cuerpo?.message?.add?.[0];
