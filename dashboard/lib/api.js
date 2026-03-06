@@ -1,15 +1,30 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+function getToken() {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('crm_token');
+}
+
 async function req(ruta, opciones = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
+  const token = getToken();
   try {
     const res = await fetch(`${BASE}${ruta}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       cache: 'no-store',
       signal: controller.signal,
       ...opciones
     });
+    if (res.status === 401) {
+      localStorage.removeItem('crm_token');
+      localStorage.removeItem('crm_usuario');
+      window.location.href = '/login';
+      throw new Error('Sesión expirada');
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `Error ${res.status}`);
@@ -50,4 +65,11 @@ export const api = {
   extraerKnowledge: ()              => req('/api/admin/extract-knowledge', { method: 'POST' }),
   entrenarKommo:    ()              => req('/api/admin/train-from-kommo',  { method: 'POST' }),
   syncContactos:    ()              => req('/api/admin/sync-contacts',      { method: 'POST' }),
+  // Auth
+  login:            (email, pass)   => req('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password: pass }) }),
+  authMe:           ()              => req('/api/auth/me'),
+  usuarios:         ()              => req('/api/auth/usuarios'),
+  crearUsuario:     (d)             => req('/api/auth/usuarios', { method: 'POST', body: JSON.stringify(d) }),
+  eliminarUsuario:  (id)            => req(`/api/auth/usuarios/${id}`, { method: 'DELETE' }),
+  cambiarPassword:  (id, pass)      => req(`/api/auth/usuarios/${id}/password`, { method: 'PATCH', body: JSON.stringify({ password: pass }) }),
 };

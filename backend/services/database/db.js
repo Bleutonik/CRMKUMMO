@@ -120,6 +120,10 @@ async function inicializarDB() {
   } finally {
     cliente.release();
   }
+
+  // Crear tabla de usuarios y admin por defecto
+  const { inicializarUsuarios } = require('../../controllers/authController');
+  await inicializarUsuarios();
 }
 
 module.exports = { pool, inicializarDB };

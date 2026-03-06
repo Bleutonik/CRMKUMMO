@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { getUsuario, removeToken, isAdmin } from '../lib/auth';
 
 const nav = [
   {
@@ -38,6 +39,13 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const usuario = getUsuario();
+
+  const logout = () => {
+    removeToken();
+    router.push('/login');
+  };
 
   return (
     <aside className="w-56 flex-shrink-0 bg-surface border-r border-border flex flex-col">
@@ -69,8 +77,30 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="px-5 py-4 border-t border-border">
-        <div className="text-xs text-muted">v1.0 · Fix A Trip</div>
+      <div className="px-3 py-4 border-t border-border space-y-1">
+        {isAdmin() && (
+          <Link
+            href="/users"
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
+              pathname === '/users' ? 'bg-accent/10 text-accent font-medium' : 'text-muted hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            Usuarios
+          </Link>
+        )}
+        <div className="px-3 py-2">
+          <div className="text-xs text-white font-medium truncate">{usuario?.nombre || 'Usuario'}</div>
+          <div className="text-xs text-muted truncate">{usuario?.email}</div>
+        </div>
+        <button onClick={logout} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted hover:text-white hover:bg-white/5 transition-all">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Cerrar sesión
+        </button>
       </div>
     </aside>
   );

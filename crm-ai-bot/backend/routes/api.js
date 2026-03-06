@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { verificarToken, soloAdmin } = require('../middleware/auth');
+const { login, me, listarUsuarios, crearUsuario, eliminarUsuario, cambiarPassword } = require('../controllers/authController');
 const {
   obtenerConversaciones, obtenerConversacion, obtenerLeads,
   obtenerEstadisticas, obtenerConfiguracion, actualizarConfiguracion
@@ -8,6 +10,18 @@ const {
   obtenerEstadoBot, toggleBot, obtenerConversacionesPorPares,
   obtenerConocimiento, crearConocimiento, eliminarConocimiento
 } = require('../controllers/botController');
+
+// Auth (rutas públicas)
+router.post('/auth/login', login);
+router.get('/auth/me', verificarToken, me);
+// Gestión de usuarios (admin)
+router.get('/auth/usuarios', verificarToken, soloAdmin, listarUsuarios);
+router.post('/auth/usuarios', verificarToken, soloAdmin, crearUsuario);
+router.delete('/auth/usuarios/:id', verificarToken, soloAdmin, eliminarUsuario);
+router.patch('/auth/usuarios/:id/password', verificarToken, cambiarPassword);
+
+// Todas las rutas siguientes requieren autenticación
+router.use(verificarToken);
 
 // Bot
 router.get('/bot-status', obtenerEstadoBot);
