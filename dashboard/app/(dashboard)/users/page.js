@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { api } from '../../lib/api';
-import { isAdmin } from '../../lib/auth';
+import { api } from '../../../lib/api';
+import { isAdmin } from '../../../lib/auth';
 
 function formatFecha(ts) {
   if (!ts) return '—';

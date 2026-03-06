@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { api } from '../../lib/api';
+import { api } from '../../../lib/api';
 
 function formatFecha(ts) {
   if (!ts) return '—';
