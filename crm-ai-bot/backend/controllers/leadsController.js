@@ -47,8 +47,24 @@ async function obtenerLeadsCRM(req, res) {
 // GET /api/pipelines
 async function obtenerPipelines(req, res) {
   try {
-    const r = await http().get('/api/v4/pipelines', { params: { with: 'statuses' } });
-    res.json({ pipelines: r.data?._embedded?.pipelines || [] });
+    const client = http();
+    const r = await client.get('/api/v4/pipelines');
+    const pipelines = r.data?._embedded?.pipelines || [];
+
+    // Fetch statuses for each pipeline separately
+    const withStatuses = await Promise.all(pipelines.map(async (pip) => {
+      try {
+        const sr = await client.get(`/api/v4/pipelines/${pip.id}/statuses`);
+        const statuses = sr.data?._embedded?.statuses || [];
+        const statusMap = {};
+        statuses.forEach(s => { statusMap[s.id] = s; });
+        return { ...pip, _embedded: { ...pip._embedded, statuses: statusMap } };
+      } catch {
+        return pip;
+      }
+    }));
+
+    res.json({ pipelines: withStatuses });
   } catch (err) {
     const status = err.response?.status;
     const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
