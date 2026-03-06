@@ -21,7 +21,7 @@ const {
 router.get('/bot-status', obtenerEstadoBot);
 router.post('/bot-toggle', toggleBot);
 
-// Conversaciones (dashboard nuevo — pares cliente/bot)
+// Conversaciones
 router.get('/conversations', obtenerConversacionesPorPares);
 
 // Knowledge base
@@ -29,7 +29,7 @@ router.get('/knowledge', obtenerConocimiento);
 router.post('/knowledge', crearConocimiento);
 router.delete('/knowledge/:id', eliminarConocimiento);
 
-// Conversaciones detalladas (dashboard anterior)
+// Conversaciones detalladas
 router.get('/conversaciones', obtenerConversaciones);
 router.get('/conversaciones/:id', obtenerConversacion);
 
@@ -43,12 +43,19 @@ router.get('/stats', obtenerEstadisticas);
 router.get('/configuracion', obtenerConfiguracion);
 router.post('/prompts', actualizarConfiguracion);
 
-// Admin — ejecutar scripts desde el navegador
+// Contactos (Kommo)
+const { obtenerContactos, obtenerContacto, responderManual } = require('../controllers/contactsController');
+router.get('/contacts', obtenerContactos);
+router.get('/contacts/:id', obtenerContacto);
+
+// Respuesta manual desde dashboard
+router.post('/reply', responderManual);
+
+// Admin
 const { importarHistorial, extraerConocimiento } = require('../controllers/adminController');
 router.post('/admin/import-kommo', importarHistorial);
 router.post('/admin/extract-knowledge', extraerConocimiento);
 
-// Entrenamiento directo desde Kommo (sin guardar conversaciones)
 const { entrenarDesdeKommo } = require('../controllers/trainController');
 router.post('/admin/train-from-kommo', entrenarDesdeKommo);
 

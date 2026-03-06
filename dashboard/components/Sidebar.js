@@ -25,6 +25,16 @@ const nav = [
     )
   },
   {
+    href: '/contacts',
+    label: 'Contactos',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    )
+  },
+  {
     href: '/training',
     label: 'Entrenamiento',
     icon: (
@@ -41,12 +51,9 @@ export default function Sidebar() {
 
   return (
     <aside className="w-56 flex-shrink-0 bg-surface border-r border-border flex flex-col">
-      {/* Logo */}
       <div className="px-5 py-5 border-b border-border">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center text-white text-xs font-bold">
-            K
-          </div>
+          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center text-white text-xs font-bold">K</div>
           <div>
             <div className="text-sm font-semibold text-white leading-none">CRM AI Bot</div>
             <div className="text-xs text-muted mt-0.5">Kommo Assistant</div>
@@ -54,7 +61,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {nav.map((item) => {
           const activo = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -62,13 +68,9 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all
-                ${activo
-                  ? 'bg-accent/10 text-accent font-medium'
-                  : 'text-muted hover:text-white hover:bg-white/5'
-                }
-              `}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                activo ? 'bg-accent/10 text-accent font-medium' : 'text-muted hover:text-white hover:bg-white/5'
+              }`}
             >
               {item.icon}
               {item.label}
@@ -77,7 +79,6 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
       <div className="px-5 py-4 border-t border-border">
         <div className="text-xs text-muted">v1.0 · Kommo CRM</div>
       </div>
