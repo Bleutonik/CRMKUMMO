@@ -85,25 +85,34 @@ export default function PipelinePage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    Promise.all([api.pipelines(), api.leadsCRM('', '', 1)])
-      .then(([p, l]) => {
+    api.pipelines()
+      .then(p => {
         const pips = p.pipelines || [];
         setPipelines(pips);
         if (pips.length > 0) setPipelineActivo(pips[0].id);
-        setLeads(l.leads || []);
       })
       .catch(e => setError(e.message))
       .finally(() => setCargando(false));
   }, []);
 
+  // Cargar leads del pipeline activo
+  useEffect(() => {
+    if (!pipelineActivo) return;
+    setCargando(true);
+    api.leadsCRM('', pipelineActivo, 1)
+      .then(l => setLeads(l.leads || []))
+      .catch(e => setError(e.message))
+      .finally(() => setCargando(false));
+  }, [pipelineActivo]);
+
   const pipeline = pipelines.find(p => p.id === pipelineActivo);
   const etapas = pipeline?._embedded?.statuses
     ? Object.values(pipeline._embedded.statuses)
-        .filter(s => s.type === 0)
+        .filter(s => s.type !== 1 && s.type !== 2)
         .sort((a, b) => a.sort - b.sort)
     : [];
 
-  const leadsDelPipeline = leads.filter(l => l.pipeline_id === pipelineActivo);
+  const leadsDelPipeline = leads;
 
   const moverLead = async (leadId, statusId, pipelineId) => {
     await api.actualizarEtapa(leadId, statusId, pipelineId);
