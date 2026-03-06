@@ -29,31 +29,20 @@ async function kommoGet(client, url, params = {}, reintentos = 3) {
   }
 }
 
-// GET /api/leads-crm?search=&pipeline=&page=all
+// GET /api/leads-crm?search=&pipeline=&page=
 async function obtenerLeadsCRM(req, res) {
   try {
-    const { search = '', pipeline = '' } = req.query;
+    const { search = '', pipeline = '', page = 1 } = req.query;
     const client = http();
-    const todos = [];
-    let pagina = 1;
+    const params = { limit: 250, page: Number(page), with: 'contacts,pipeline' };
+    if (search)   params.query = search;
+    if (pipeline) params.pipeline_id = pipeline;
 
-    while (true) {
-      const params = { limit: 250, page: pagina, with: 'contacts,pipeline' };
-      if (search)   params.query = search;
-      if (pipeline) params.pipeline_id = pipeline;
+    const r = await kommoGet(client, '/api/v4/leads', params);
+    const leads = r.data?._embedded?.leads || [];
+    const total = r.data?.total_items || leads.length;
 
-      const r = await kommoGet(client, '/api/v4/leads', params);
-      const lote = r.data?._embedded?.leads || [];
-      todos.push(...lote);
-
-      // Si hay búsqueda o pipeline, no paginamos (resultado acotado)
-      if (search || pipeline || lote.length < 250) break;
-
-      pagina++;
-      await sleep(200); // respetar rate limit entre páginas
-    }
-
-    const resultado = todos.map(l => ({
+    const resultado = leads.map(l => ({
       id:          l.id,
       nombre:      l.name,
       valor:       l.price || 0,
@@ -66,8 +55,8 @@ async function obtenerLeadsCRM(req, res) {
       actualizado: l.updated_at ? new Date(l.updated_at * 1000).toISOString() : null,
     }));
 
-    console.log(`[LEADS] Cargados ${resultado.length} leads (${pagina} páginas)`);
-    res.json({ leads: resultado, total: resultado.length });
+    console.log(`[LEADS] Página ${page}: ${resultado.length} leads (total: ${total})`);
+    res.json({ leads: resultado, total, page: Number(page), hasMore: resultado.length === 250 });
   } catch (err) {
     console.error('[LEADS]', err.response?.status, err.message);
     res.status(500).json({ error: 'Error obteniendo leads: ' + err.message });

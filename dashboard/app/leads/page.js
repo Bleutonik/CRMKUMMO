@@ -212,22 +212,30 @@ export default function LeadsPage() {
   const [pipeline, setPipeline] = useState('');
   const [pipelines, setPipelines] = useState([]);
   const [detalle, setDetalle] = useState(null);
+  const [pagina, setPagina] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
 
-  const cargar = useCallback((q, pip) => {
+  const cargar = useCallback((q, pip, pag = 1) => {
     setCargando(true); setError(null);
-    api.leadsCRM(q, pip)
-      .then(d => setLeads(d.leads || []))
+    api.leadsCRM(q, pip, pag)
+      .then(d => {
+        setLeads(d.leads || []);
+        setHasMore(d.hasMore || false);
+        setTotal(d.total || 0);
+        setPagina(pag);
+      })
       .catch(e => setError(e.message))
       .finally(() => setCargando(false));
   }, []);
 
   useEffect(() => {
     api.pipelines().then(d => setPipelines(d.pipelines || [])).catch(() => {});
-    cargar('', '');
+    cargar('', '', 1);
   }, [cargar]);
 
   useEffect(() => {
-    const t = setTimeout(() => cargar(busqueda, pipeline), 400);
+    const t = setTimeout(() => cargar(busqueda, pipeline, 1), 400);
     return () => clearTimeout(t);
   }, [busqueda, pipeline, cargar]);
 
@@ -236,7 +244,7 @@ export default function LeadsPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-xl font-semibold text-white">Leads</h1>
-          <p className="text-sm text-muted mt-1">{cargando ? 'Cargando...' : `${leads.length} leads`}</p>
+          <p className="text-sm text-muted mt-1">{cargando ? 'Cargando...' : `${leads.length} leads${total > leads.length ? ` de ${total}` : ''}`}</p>
         </div>
         <div className="flex gap-3">
           {pipelines.length > 0 && (
@@ -306,6 +314,27 @@ export default function LeadsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Paginación */}
+      {(pagina > 1 || hasMore) && (
+        <div className="flex items-center justify-between mt-4">
+          <button
+            onClick={() => cargar(busqueda, pipeline, pagina - 1)}
+            disabled={pagina <= 1 || cargando}
+            className="btn-ghost text-sm disabled:opacity-30"
+          >
+            ← Anterior
+          </button>
+          <span className="text-sm text-muted">Página {pagina}</span>
+          <button
+            onClick={() => cargar(busqueda, pipeline, pagina + 1)}
+            disabled={!hasMore || cargando}
+            className="btn-ghost text-sm disabled:opacity-30"
+          >
+            Siguiente →
+          </button>
+        </div>
+      )}
 
       {detalle && <LeadDetalle id={detalle} onClose={() => setDetalle(null)} />}
     </div>
