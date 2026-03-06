@@ -5,9 +5,9 @@ function getToken() {
   return localStorage.getItem('crm_token');
 }
 
-async function req(ruta, opciones = {}) {
+async function req(ruta, opciones = {}, timeoutMs = 10000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const token = getToken();
   try {
     const res = await fetch(`${BASE}${ruta}`, {
@@ -42,7 +42,7 @@ export const api = {
   // Bot
   botStatus:        ()              => req('/api/bot-status'),
   botToggle:        ()              => req('/api/bot-toggle', { method: 'POST' }),
-  botTest:          (msg)           => req('/api/bot-test', { method: 'POST', body: JSON.stringify({ mensaje: msg }) }),
+  botTest:          (msg)           => req('/api/bot-test', { method: 'POST', body: JSON.stringify({ mensaje: msg }) }, 45000),
   // Conversaciones
   conversations:    ()              => req('/api/conversations'),
   reply:            (leadId, msg)   => req('/api/reply', { method: 'POST', body: JSON.stringify({ leadId, mensaje: msg }) }),
