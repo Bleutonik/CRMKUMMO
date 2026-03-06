@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { pool } = require('../services/database/db');
 
 const _sub = process.env.KOMMO_SUBDOMAIN || '';
 const BASE_URL = process.env.KOMMO_BASE_URL
@@ -139,23 +140,50 @@ async function obtenerLeadDetalle(req, res) {
       return 'nota';
     }
 
-    const notas = (notasR.status === 'fulfilled'
+    // Notas de Kommo (notas internas, llamadas, emails, etc.)
+    const notasKommo = (notasR.status === 'fulfilled'
       ? notasR.value.data?._embedded?.notes || []
       : []
-    ).sort((a, b) => a.created_at - b.created_at) // cronológico: más antiguo primero
-     .map(n => {
+    ).map(n => {
        let texto = n.params?.text || null;
        if (typeof texto === 'string' && texto.startsWith('{')) {
          try { texto = JSON.parse(texto).content_summary || texto; } catch {}
        }
        return {
-         id:        n.id,
+         id:        `k-${n.id}`,
          tipo:      n.note_type,
          rol:       rolNota(n.note_type),
          texto,
+         fuente:    'kommo',
          creado_en: n.created_at ? new Date(n.created_at * 1000).toISOString() : null,
        };
-     }).filter(n => n.texto);
+     })
+     .filter(n => n.texto)
+     // Excluir duplicados: respuestas del bot y replies del dashboard ya están en la DB
+     .filter(n => !n.texto.startsWith('🤖 Asistente IA:') && !n.texto.startsWith('📱 '));
+
+    // Mensajes SMS de nuestra DB (Twilio — entrantes y salientes vía bot/dashboard)
+    const dbResult = await pool.query(
+      `SELECT mensaje_cliente, respuesta_bot, timestamp FROM conversations
+       WHERE lead_id = $1 ORDER BY timestamp ASC`,
+      [String(id)]
+    ).catch(() => ({ rows: [] }));
+
+    const mensajesDB = [];
+    for (const row of dbResult.rows) {
+      const ts = row.timestamp ? new Date(row.timestamp).toISOString() : null;
+      if (row.mensaje_cliente && !row.mensaje_cliente.startsWith('[')) {
+        mensajesDB.push({ id: `db-in-${ts}`, rol: 'cliente', texto: row.mensaje_cliente, fuente: 'sms', creado_en: ts });
+      }
+      if (row.respuesta_bot) {
+        mensajesDB.push({ id: `db-out-${ts}`, rol: 'agente', texto: row.respuesta_bot, fuente: 'sms', creado_en: ts });
+      }
+    }
+
+    // Mezclar y ordenar cronológicamente
+    const notas = [...mensajesDB, ...notasKommo]
+      .filter(n => n.creado_en)
+      .sort((a, b) => new Date(a.creado_en) - new Date(b.creado_en));
 
     let contacto = null;
     const contactoEmb = l._embedded?.contacts?.[0];
