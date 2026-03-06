@@ -31,6 +31,9 @@ const TIPO_ETIQUETA = {
  * Intenta extraer de params.text, params.note, text, body, o contenido embebido.
  */
 function extraerTextoNota(nota) {
+  // note_type puede venir como número o string según el endpoint de Kommo
+  const tipo = Number(nota.note_type);
+
   // Intentar todas las rutas posibles de texto
   const candidatos = [
     nota.params?.text,
@@ -42,22 +45,24 @@ function extraerTextoNota(nota) {
   for (const candidato of candidatos) {
     if (!candidato) continue;
 
-    // Email: texto es JSON con content_summary
-    if (nota.note_type === 15) {
+    // Tipo 15 = email: texto es un JSON con content_summary
+    if (tipo === 15) {
       try {
         const obj = typeof candidato === 'string' ? JSON.parse(candidato) : candidato;
-        const resumen = obj.content_summary || obj.subject || obj.body || '';
-        const de = obj.from?.name || obj.from?.email || '';
-        const texto = resumen.trim();
-        if (texto.length >= 10) return de ? `De: ${de} — ${texto}` : texto;
+        const partes = [];
+        if (obj.subject) partes.push(`Asunto: ${obj.subject}`);
+        if (obj.from?.name || obj.from?.email) partes.push(`De: ${obj.from.name || obj.from.email}`);
+        if (obj.content_summary) partes.push(obj.content_summary);
+        const texto = partes.join(' | ').trim();
+        if (texto.length >= 10) return texto;
       } catch {}
-      // Si no es JSON válido, usar el texto directamente
+      continue; // si falla el parse, no intentar usar el JSON raw como texto
     }
 
     // Texto plano
     const str = typeof candidato === 'string' ? candidato.trim() : String(candidato).trim();
 
-    // Ignorar prefijo del bot propio para no aprender bucles
+    // Ignorar mensajes del propio bot para no crear bucles de aprendizaje
     if (str.startsWith('🤖 Asistente IA:')) continue;
 
     if (str.length >= 5) return str;
@@ -68,11 +73,11 @@ function extraerTextoNota(nota) {
 
 /**
  * Determina la etiqueta de dirección de una nota.
- * Si no es un tipo conocido pero tiene texto, lo incluye como 'Mensaje'
- * para no perder datos de canales que no están en el mapa.
+ * note_type puede llegar como string o número, lo normalizamos.
  */
 function etiquetaNota(nota) {
-  return TIPO_ETIQUETA[nota.note_type] || 'Mensaje';
+  const tipo = Number(nota.note_type);
+  return TIPO_ETIQUETA[tipo] || 'Mensaje';
 }
 
 /**
