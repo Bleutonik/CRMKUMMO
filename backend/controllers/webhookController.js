@@ -68,11 +68,15 @@ async function manejarWebhook(req, res) {
     console.log(`Mensaje recibido: ${textoMensaje}`);
     console.log(`[WEBHOOK] Lead ID: ${leadId}`);
 
-    // Obtener nombre del contacto
+    // Obtener datos completos del contacto
     let contactName = autorNombre;
+    let contactEmail = null;
+    let contactTelefono = null;
     try {
       const infoContacto = await obtenerContactoLead(leadId);
-      contactName = infoContacto.nombre || autorNombre || null;
+      contactName   = infoContacto.nombre   || autorNombre || null;
+      contactEmail  = infoContacto.email    || null;
+      contactTelefono = infoContacto.telefono || null;
     } catch {}
 
     // SIEMPRE guardar el mensaje (independiente del estado del bot)
@@ -106,6 +110,8 @@ async function manejarWebhook(req, res) {
     const respuestaIA = await generarRespuestaAI(textoMensaje, {
       leadId,
       contactName,
+      email:    contactEmail,
+      telefono: contactTelefono,
       ...contexto
     });
 

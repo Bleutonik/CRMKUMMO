@@ -63,7 +63,8 @@ const { importarHistorial, extraerConocimiento } = require('../controllers/admin
 router.post('/admin/import-kommo', importarHistorial);
 router.post('/admin/extract-knowledge', extraerConocimiento);
 
-const { entrenarDesdeKommo } = require('../controllers/trainController');
+const { entrenarDesdeKommo, aprenderDeConversacionesDB } = require('../controllers/trainController');
 router.post('/admin/train-from-kommo', entrenarDesdeKommo);
+router.post('/admin/learn-from-db', aprenderDeConversacionesDB);
 
 module.exports = router;

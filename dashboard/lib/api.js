@@ -64,6 +64,7 @@ export const api = {
   importarKommo:    ()              => req('/api/admin/import-kommo',     { method: 'POST' }),
   extraerKnowledge: ()              => req('/api/admin/extract-knowledge', { method: 'POST' }),
   entrenarKommo:    ()              => req('/api/admin/train-from-kommo',  { method: 'POST' }),
+  aprenderDB:       ()              => req('/api/admin/learn-from-db',      { method: 'POST' }),
   syncContactos:    ()              => req('/api/admin/sync-contacts',      { method: 'POST' }),
   // Auth
   login:            (email, pass)   => req('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password: pass }) }),

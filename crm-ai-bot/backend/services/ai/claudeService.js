@@ -32,7 +32,7 @@ async function obtenerConocimiento() {
 }
 
 // Historial reciente del lead actual (últimos intercambios)
-async function obtenerHistorial(leadId, limite = 8) {
+async function obtenerHistorial(leadId, limite = 10) {
   try {
     const resultado = await pool.query(`
       SELECT mensaje_cliente, respuesta_bot
@@ -52,9 +52,8 @@ async function obtenerHistorial(leadId, limite = 8) {
   }
 }
 
-// Ejemplos similares del historial importado de Kommo
-// Busca conversaciones reales donde agentes humanos ya respondieron mensajes parecidos
-async function obtenerEjemplosRelevantes(mensaje, leadIdActual, limite = 5) {
+// Ejemplos similares de conversaciones reales — busca por palabras clave
+async function obtenerEjemplosRelevantes(mensaje, leadIdActual, limite = 6) {
   try {
     // Extraer palabras clave del mensaje (mínimo 4 caracteres)
     const palabras = mensaje
@@ -65,15 +64,14 @@ async function obtenerEjemplosRelevantes(mensaje, leadIdActual, limite = 5) {
 
     if (palabras.length === 0) return '';
 
-    // Buscar conversaciones con respuesta humana que contengan palabras clave
-    // Se excluye el lead actual para no mezclar con el historial propio
-    const condiciones = palabras.slice(0, 5).map((p, i) =>
+    // Buscar en conversations (mensajes reales de WhatsApp/chat)
+    const condiciones = palabras.slice(0, 6).map((p, i) =>
       `(LOWER(mensaje_cliente) LIKE $${i + 2} OR LOWER(respuesta_bot) LIKE $${i + 2})`
     ).join(' OR ');
 
     const params = [
       leadIdActual || '0',
-      ...palabras.slice(0, 5).map(p => `%${p}%`)
+      ...palabras.slice(0, 6).map(p => `%${p}%`)
     ];
 
     const resultado = await pool.query(`
@@ -93,8 +91,44 @@ async function obtenerEjemplosRelevantes(mensaje, leadIdActual, limite = 5) {
       `Ejemplo ${i + 1}:\nCliente: ${r.mensaje_cliente}\nAgente: ${r.respuesta_bot}`
     ).join('\n\n');
 
-    return `\n\n--- EJEMPLOS DE CONVERSACIONES REALES (usa este estilo para responder) ---\n${ejemplos}\n--- FIN EJEMPLOS ---`;
+    return `\n\n--- EJEMPLOS DE CONVERSACIONES REALES (usa este estilo y tono para responder) ---\n${ejemplos}\n--- FIN EJEMPLOS ---`;
 
+  } catch {
+    return '';
+  }
+}
+
+// Conocimiento relevante por palabras clave del mensaje actual
+async function obtenerConocimientoRelevante(mensaje) {
+  try {
+    const palabras = mensaje
+      .toLowerCase()
+      .replace(/[^a-záéíóúñü\s]/gi, '')
+      .split(/\s+/)
+      .filter(p => p.length >= 4)
+      .slice(0, 5);
+
+    if (palabras.length === 0) return '';
+
+    const condiciones = palabras.map((p, i) =>
+      `(LOWER(pregunta) LIKE $${i + 1} OR LOWER(respuesta) LIKE $${i + 1})`
+    ).join(' OR ');
+
+    const resultado = await pool.query(`
+      SELECT pregunta, respuesta, categoria
+      FROM conocimiento
+      WHERE activo = TRUE AND (${condiciones})
+      ORDER BY creado_en DESC
+      LIMIT 5
+    `, palabras.map(p => `%${p}%`));
+
+    if (resultado.rows.length === 0) return '';
+
+    const entradas = resultado.rows.map(r =>
+      `[${r.categoria.toUpperCase()}] P: ${r.pregunta}\nR: ${r.respuesta}`
+    ).join('\n\n');
+
+    return `\n\n--- CONOCIMIENTO RELEVANTE PARA ESTA CONSULTA ---\n${entradas}\n--- FIN ---`;
   } catch {
     return '';
   }
@@ -102,33 +136,38 @@ async function obtenerEjemplosRelevantes(mensaje, leadIdActual, limite = 5) {
 
 /**
  * Genera una respuesta de IA para el mensaje del cliente.
- * Si CLAUDE_API_KEY no está configurada, devuelve un mensaje de fallback.
  */
 async function generarRespuestaAI(mensaje, contexto = {}) {
-  // Fallback si no hay API key configurada
   if (!process.env.CLAUDE_API_KEY) {
     console.warn('[AI] CLAUDE_API_KEY no configurada, usando respuesta de fallback');
     return 'Gracias por tu mensaje. Un agente te responderá pronto.';
   }
 
   try {
-    const [promptSistema, conocimiento, historial, ejemplos] = await Promise.all([
+    const [promptSistema, conocimientoGeneral, historial, ejemplos, conocimientoRelevante] = await Promise.all([
       obtenerPromptSistema(),
       obtenerConocimiento(),
       obtenerHistorial(contexto.leadId),
-      obtenerEjemplosRelevantes(mensaje, contexto.leadId)
+      obtenerEjemplosRelevantes(mensaje, contexto.leadId),
+      obtenerConocimientoRelevante(mensaje)
     ]);
 
-    // Construir contexto del lead
+    // Construir contexto completo del lead/contacto
     let contextoTexto = '';
     if (contexto.contactName) contextoTexto += `\nContacto: ${contexto.contactName}`;
+    if (contexto.telefono)    contextoTexto += `\nTeléfono: ${contexto.telefono}`;
+    if (contexto.email)       contextoTexto += `\nEmail: ${contexto.email}`;
+    if (contexto.nombre)      contextoTexto += `\nNombre del lead: ${contexto.nombre}`;
     if (contexto.etapa)       contextoTexto += `\nEtapa del pipeline: ${contexto.etapa}`;
-    if (contexto.pipeline)    contextoTexto += `\nPipeline: ${contexto.pipeline}`;
+    if (contexto.pipeline)    contextoTexto += `\nPipeline ID: ${contexto.pipeline}`;
 
+    // El system prompt combina: prompt base + contexto lead + conocimiento general +
+    // ejemplos similares + conocimiento específico relevante al mensaje
     const systemPrompt = promptSistema
-      + (contextoTexto ? `\n\nDatos del lead:${contextoTexto}` : '')
-      + conocimiento
-      + ejemplos;  // ← ejemplos del historial de Kommo
+      + (contextoTexto ? `\n\nDatos del contacto:${contextoTexto}` : '')
+      + conocimientoGeneral
+      + (conocimientoRelevante || '')
+      + (ejemplos || '');
 
     const respuesta = await cliente.messages.create({
       model: 'claude-sonnet-4-6',

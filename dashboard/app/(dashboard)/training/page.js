@@ -100,16 +100,17 @@ export default function TrainingPage() {
         </p>
 
         <div className="flex flex-wrap gap-3">
-          {/* Entrenamiento directo — UN SOLO PASO */}
+          {/* Entrenamiento directo desde Kommo — lee todos los leads e historial */}
           <button
             onClick={async () => {
               setEntrenando(true);
               setAdminMsg(null);
               try {
                 await api.entrenarKommo();
-                setAdminMsg({ tipo: 'ok', texto: 'Entrenamiento iniciado. Claude está leyendo los leads de Kommo y extrayendo conocimiento. Revisa los logs de Railway. En unos minutos aparecerá el conocimiento abajo.' });
+                setAdminMsg({ tipo: 'ok', texto: 'Entrenamiento iniciado. Claude está leyendo todos los leads de Kommo y extrayendo conocimiento. Puede tardar varios minutos. El conocimiento aparecerá abajo automáticamente.' });
                 setTimeout(() => cargar(), 60000);
                 setTimeout(() => cargar(), 120000);
+                setTimeout(() => cargar(), 180000);
               } catch (e) {
                 setAdminMsg({ tipo: 'error', texto: `Error: ${e.message}` });
               }
@@ -123,7 +124,33 @@ export default function TrainingPage() {
                 <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
                 Iniciando...
               </span>
-            ) : '⚡ Entrenar directamente desde Kommo'}
+            ) : '⚡ Entrenar desde Kommo (todos los leads)'}
+          </button>
+
+          {/* Aprender del historial de conversaciones en la DB */}
+          <button
+            onClick={async () => {
+              setImportando(true);
+              setAdminMsg(null);
+              try {
+                await api.aprenderDB();
+                setAdminMsg({ tipo: 'ok', texto: 'Aprendizaje desde historial de conversaciones iniciado. Claude analizará los últimos 500 intercambios y extraerá conocimiento. Aparecerá en minutos.' });
+                setTimeout(() => cargar(), 45000);
+                setTimeout(() => cargar(), 90000);
+              } catch (e) {
+                setAdminMsg({ tipo: 'error', texto: `Error: ${e.message}` });
+              }
+              setImportando(false);
+            }}
+            disabled={importando || extrayendo || entrenando}
+            className="btn-ghost disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importando ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-white/40 border-t-white/80 rounded-full animate-spin" />
+                Iniciando...
+              </span>
+            ) : '💬 Aprender del historial de conversaciones'}
           </button>
 
           {/* Opciones avanzadas colapsadas */}

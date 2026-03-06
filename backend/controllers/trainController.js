@@ -196,4 +196,116 @@ Máximo 8 entradas. Si no hay contenido útil para un bot, devuelve [].`
   }
 }
 
-module.exports = { entrenarDesdeKommo };
+/**
+ * Analiza las conversaciones guardadas en la DB (conversations table)
+ * y extrae conocimiento adicional. Corre en background.
+ */
+async function aprenderDeConversacionesDB(req, res) {
+  res.json({ ok: true, mensaje: 'Aprendizaje desde historial DB iniciado. Revisa los logs de Railway.' });
+
+  console.log('[TRAIN-DB] Iniciando análisis de conversaciones en DB...');
+
+  try {
+    // Obtener pares donde hubo respuesta (bot o humano)
+    const resultado = await pool.query(`
+      SELECT lead_id, contact_name, mensaje_cliente, respuesta_bot
+      FROM conversations
+      WHERE respuesta_bot IS NOT NULL
+        AND LENGTH(respuesta_bot) > 20
+        AND LENGTH(mensaje_cliente) > 3
+      ORDER BY timestamp DESC
+      LIMIT 500
+    `);
+
+    if (resultado.rows.length === 0) {
+      console.log('[TRAIN-DB] Sin conversaciones en DB para analizar.');
+      return;
+    }
+
+    console.log(`[TRAIN-DB] ${resultado.rows.length} pares encontrados. Analizando con Claude...`);
+
+    // Agrupar por lead para contexto coherente
+    const porLead = {};
+    for (const row of resultado.rows) {
+      if (!porLead[row.lead_id]) porLead[row.lead_id] = [];
+      porLead[row.lead_id].push(row);
+    }
+
+    const leads = Object.values(porLead);
+    let extraidas = 0;
+    const BATCH = 15;
+
+    for (let i = 0; i < leads.length; i += BATCH) {
+      const lote = leads.slice(i, i + BATCH);
+      const textos = lote.map(conversacion => {
+        const nombre = conversacion[0].contact_name || 'Cliente';
+        const lineas = conversacion.map(r =>
+          `Cliente: ${r.mensaje_cliente}\nAsistente: ${r.respuesta_bot}`
+        ).join('\n');
+        return `[${nombre}]\n${lineas}`;
+      });
+
+      try {
+        const contenido = textos.join('\n\n---\n\n');
+        const respuesta = await claude.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2048,
+          messages: [{
+            role: 'user',
+            content: `Analiza estas conversaciones reales de WhatsApp de una empresa de viajes (Fix A Trip).
+
+CONVERSACIONES:
+${contenido}
+
+Identifica preguntas frecuentes y las mejores respuestas dadas. Extrae conocimiento útil para que un bot pueda responder preguntas similares en el futuro.
+
+Devuelve SOLO un JSON válido (sin markdown, sin texto extra):
+[
+  {
+    "pregunta": "pregunta representativa del cliente",
+    "respuesta": "respuesta completa y útil",
+    "categoria": "reservas | precios | tours | disponibilidad | contacto | cancelaciones | general"
+  }
+]
+
+Máximo 8 entradas. Si no hay contenido útil, devuelve [].`
+          }]
+        });
+
+        const match = respuesta.content[0].text.match(/\[[\s\S]*\]/);
+        if (!match) continue;
+
+        const entradas = JSON.parse(match[0]);
+        for (const entrada of entradas) {
+          if (!entrada.pregunta || !entrada.respuesta) continue;
+
+          const palabras = entrada.pregunta.toLowerCase().split(/\s+/).filter(p => p.length > 4).slice(0, 3);
+          if (palabras.length > 0) {
+            const cond = palabras.map((_, i) => `LOWER(pregunta) LIKE $${i + 1}`).join(' AND ');
+            const existe = await pool.query(
+              `SELECT id FROM conocimiento WHERE ${cond} LIMIT 1`,
+              palabras.map(p => `%${p}%`)
+            );
+            if (existe.rows.length > 0) continue;
+          }
+
+          await pool.query(
+            'INSERT INTO conocimiento (pregunta, respuesta, categoria) VALUES ($1,$2,$3)',
+            [entrada.pregunta, entrada.respuesta, entrada.categoria || 'general']
+          );
+          extraidas++;
+        }
+      } catch (err) {
+        console.error('[TRAIN-DB] Error Claude batch:', err.message);
+      }
+
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    console.log(`[TRAIN-DB] ✅ Completado — conocimientos extraídos de DB: ${extraidas}`);
+  } catch (err) {
+    console.error('[TRAIN-DB] Error fatal:', err.message);
+  }
+}
+
+module.exports = { entrenarDesdeKommo, aprenderDeConversacionesDB };
