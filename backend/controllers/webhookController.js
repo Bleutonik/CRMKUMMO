@@ -23,9 +23,17 @@ async function manejarWebhook(req, res) {
     let talkId = null;
 
     if (msgTwilio) {
-      // Ignorar mensajes salientes del bot
+      // Mensaje saliente desde Kommo (agente humano respondiendo) — guardar en DB, NO responder con bot
       if (msgTwilio.type === 'outgoing') {
-        console.log('[WEBHOOK] Mensaje saliente del bot, ignorando');
+        const lId = String(msgTwilio.element_id || msgTwilio.entity_id || msgTwilio.lead_id || '');
+        const texto = msgTwilio.text;
+        if (lId && texto) {
+          await pool.query(
+            `INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1, $2, NULL, $3, NOW())`,
+            [lId, msgTwilio.author?.name || null, texto]
+          ).catch(() => {});
+          console.log(`[WEBHOOK] Mensaje saliente de agente guardado en DB — lead ${lId}: "${texto.slice(0,50)}"`);
+        }
         return;
       }
       textoMensaje = msgTwilio.text;
