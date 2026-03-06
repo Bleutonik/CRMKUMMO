@@ -17,7 +17,7 @@ function http() {
 async function obtenerLeadsCRM(req, res) {
   try {
     const { search = '', pipeline = '', page = 1 } = req.query;
-    const params = { limit: 50, page: Number(page), with: 'contacts,pipeline' };
+    const params = { limit: 250, page: Number(page), with: 'contacts,pipeline' };
     if (search)   params.query = search;
     if (pipeline) params.pipeline_id = pipeline;
 
