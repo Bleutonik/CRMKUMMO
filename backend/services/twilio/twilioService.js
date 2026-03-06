@@ -1,12 +1,25 @@
 const axios = require('axios');
 
-const ACCOUNT_SID  = process.env.TWILIO_ACCOUNT_SID;
-const AUTH_TOKEN   = process.env.TWILIO_AUTH_TOKEN;
-const FROM_NUMBER  = process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_PHONE_NUMBER;
-
 async function enviarSmsTwilio(telefono, texto) {
+  // Leer en el momento de la llamada (no al inicio del módulo) para capturar los valores actuales
+  const ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+  const AUTH_TOKEN  = process.env.TWILIO_AUTH_TOKEN;
+  const FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_PHONE_NUMBER;
+
+  // Log para diagnosticar cuál falta
+  console.log('[TWILIO] Variables disponibles:', {
+    TWILIO_ACCOUNT_SID: ACCOUNT_SID ? `${ACCOUNT_SID.slice(0,6)}...` : 'FALTA',
+    TWILIO_AUTH_TOKEN:  AUTH_TOKEN  ? '***'                          : 'FALTA',
+    TWILIO_FROM_NUMBER: FROM_NUMBER || 'FALTA',
+  });
+
   if (!ACCOUNT_SID || !AUTH_TOKEN || !FROM_NUMBER) {
-    throw new Error('Faltan variables de Twilio: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER');
+    const faltan = [
+      !ACCOUNT_SID && 'TWILIO_ACCOUNT_SID',
+      !AUTH_TOKEN  && 'TWILIO_AUTH_TOKEN',
+      !FROM_NUMBER && 'TWILIO_FROM_NUMBER',
+    ].filter(Boolean).join(', ');
+    throw new Error(`Faltan variables de Twilio en Railway: ${faltan}`);
   }
   if (!telefono) {
     throw new Error('Número de teléfono del cliente no disponible');
