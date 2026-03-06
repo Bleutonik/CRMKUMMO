@@ -71,16 +71,25 @@ function ReplyBox({ leadId, onSent }) {
 
 function ChatPanel({ contacto, onClose, onSent }) {
   const bottomRef = useRef(null);
-  const [notas, setNotas] = useState(null); // null = cargando
+  const [notas, setNotas] = useState(null);
   const [errorNotas, setErrorNotas] = useState(null);
+  const [refreshando, setRefreshando] = useState(false);
 
-  const cargarNotas = () => {
+  const cargarNotas = (silencioso = false) => {
+    if (!silencioso) setRefreshando(true);
     api.leadDetalle(contacto.lead_id)
       .then(d => setNotas(d.notas || []))
-      .catch(e => { setErrorNotas(e.message); setNotas([]); });
+      .catch(e => { setErrorNotas(e.message); setNotas([]); })
+      .finally(() => setRefreshando(false));
   };
 
   useEffect(() => { cargarNotas(); }, [contacto.lead_id]);
+
+  // Auto-refresh cada 15 segundos para capturar mensajes nuevos de Kommo
+  useEffect(() => {
+    const interval = setInterval(() => cargarNotas(true), 15000);
+    return () => clearInterval(interval);
+  }, [contacto.lead_id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -99,11 +108,18 @@ function ChatPanel({ contacto, onClose, onSent }) {
               Lead #{contacto.lead_id} · {notas ? `${notas.length} mensajes` : 'Cargando...'}
             </div>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-white p-1 transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex gap-1 items-center">
+            <button onClick={() => cargarNotas()} title="Actualizar" className="text-muted hover:text-white p-1 transition-colors">
+              <svg className={`w-4 h-4 ${refreshando ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button onClick={onClose} className="text-muted hover:text-white p-1 transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Mensajes desde Kommo */}
