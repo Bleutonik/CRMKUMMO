@@ -257,6 +257,11 @@ async function responderManual(req, res) {
     if (telefono) {
       // Enviar SMS real via Twilio
       await enviarSmsTwilio(telefono, texto);
+      // Registrar en Kommo como nota para que quede visible en el CRM
+      await http.post(`/api/v4/leads/${leadId}/notes`, [{
+        note_type: 'common',
+        params: { text: `📱 SMS enviado:\n\n${texto}` }
+      }]).catch(e => console.log('[REPLY] No se pudo registrar nota en Kommo:', e.message));
     } else {
       // Sin teléfono: nota común como fallback
       console.log(`[REPLY] Sin teléfono — usando nota común como fallback`);

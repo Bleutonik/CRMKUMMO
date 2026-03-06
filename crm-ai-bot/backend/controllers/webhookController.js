@@ -146,6 +146,8 @@ async function manejarWebhook(req, res) {
     // Enviar SMS real via Twilio al número del cliente
     if (contactTelefono) {
       await enviarSmsTwilio(contactTelefono, respuestaLimpia);
+      // Registrar en Kommo para que quede visible en el CRM
+      await agregarNotaLead(leadId, respuestaLimpia);
     } else {
       // Sin teléfono: nota común como fallback
       console.log('[WEBHOOK] Sin teléfono — usando nota común como fallback');
