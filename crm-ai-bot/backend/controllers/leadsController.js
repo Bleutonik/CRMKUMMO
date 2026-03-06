@@ -47,11 +47,13 @@ async function obtenerLeadsCRM(req, res) {
 // GET /api/pipelines
 async function obtenerPipelines(req, res) {
   try {
-    const r = await http().get('/api/v4/pipelines?with=statuses');
+    const r = await http().get('/api/v4/pipelines', { params: { with: 'statuses' } });
     res.json({ pipelines: r.data?._embedded?.pipelines || [] });
   } catch (err) {
-    console.error('[PIPELINES]', err.message);
-    res.status(500).json({ error: 'Error obteniendo pipelines' });
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[PIPELINES] HTTP ${status} — ${detail}`);
+    res.status(500).json({ error: `Error obteniendo pipelines: HTTP ${status || '?'} — ${err.message}` });
   }
 }
 
