@@ -32,14 +32,14 @@ async function obtenerLeadsCRM(req, res) {
       pipeline_id: l.pipeline_id,
       pipeline:    l._embedded?.pipelines?.[0]?.name || l._embedded?.pipeline?.name || null,
       contacto:    l._embedded?.contacts?.[0]?.name || null,
-      contacto_id: l._embedded?.contacts?.[0]?.id || null,
+      contacto_id: l._embedded?.contacts?.[0]?.id   || null,
       creado_en:   l.created_at ? new Date(l.created_at * 1000).toISOString() : null,
       actualizado: l.updated_at ? new Date(l.updated_at * 1000).toISOString() : null,
     }));
 
     res.json({ leads: resultado, total: resultado.length });
   } catch (err) {
-    console.error('[LEADS]', err.message);
+    console.error('[LEADS]', err.response?.status, err.message);
     res.status(500).json({ error: 'Error obteniendo leads: ' + err.message });
   }
 }
@@ -48,8 +48,7 @@ async function obtenerLeadsCRM(req, res) {
 async function obtenerPipelines(req, res) {
   try {
     const r = await http().get('/api/v4/pipelines?with=statuses');
-    const pipelines = r.data?._embedded?.pipelines || [];
-    res.json({ pipelines });
+    res.json({ pipelines: r.data?._embedded?.pipelines || [] });
   } catch (err) {
     console.error('[PIPELINES]', err.message);
     res.status(500).json({ error: 'Error obteniendo pipelines' });
@@ -58,46 +57,51 @@ async function obtenerPipelines(req, res) {
 
 // GET /api/leads-crm/:id
 async function obtenerLeadDetalle(req, res) {
-  try {
-    const id = req.params.id;
-    const client = http();
+  const id = req.params.id;
+  const client = http();
+  console.log(`[LEAD DETALLE] Fetching lead ${id}`);
 
-    // Obtener lead y notas en paralelo
-    const [leadR, notasR] = await Promise.all([
-      client.get(`/api/v4/leads/${id}`, { params: { with: 'contacts,pipeline' } }),
-      client.get(`/api/v4/leads/${id}/notes`, { params: { limit: 50 } }).catch(() => ({ data: null }))
+  try {
+    // 1. Lead básico (sin with para evitar errores)
+    const leadR = await client.get(`/api/v4/leads/${id}`);
+    const l = leadR.data;
+    console.log(`[LEAD DETALLE] Lead ${id} ok: ${l.name}`);
+
+    // 2. Notas y contactos en paralelo (opcionales)
+    const [notasR, contactosR] = await Promise.allSettled([
+      client.get(`/api/v4/leads/${id}/notes?limit=50`),
+      l._embedded?.contacts?.[0]?.id
+        ? client.get(`/api/v4/contacts/${l._embedded.contacts[0].id}`)
+        : Promise.resolve(null)
     ]);
 
-    const l = leadR.data;
-    const notas = (notasR.data?._embedded?.notes || [])
-      .sort((a, b) => b.created_at - a.created_at)
-      .map(n => {
-        let textoNota = n.params?.text || null;
-        // Si es JSON (email tipo 15), extraer resumen
-        if (typeof textoNota === 'string' && textoNota.startsWith('{')) {
-          try { textoNota = JSON.parse(textoNota).content_summary || textoNota; } catch {}
-        }
-        return {
-          id:        n.id,
-          tipo:      n.note_type,
-          texto:     textoNota,
-          creado_en: n.created_at ? new Date(n.created_at * 1000).toISOString() : null,
-        };
-      })
-      .filter(n => n.texto);
+    const notas = (notasR.status === 'fulfilled'
+      ? notasR.value.data?._embedded?.notes || []
+      : []
+    ).sort((a, b) => b.created_at - a.created_at)
+     .map(n => {
+       let texto = n.params?.text || null;
+       if (typeof texto === 'string' && texto.startsWith('{')) {
+         try { texto = JSON.parse(texto).content_summary || texto; } catch {}
+       }
+       return {
+         id:        n.id,
+         tipo:      n.note_type,
+         texto,
+         creado_en: n.created_at ? new Date(n.created_at * 1000).toISOString() : null,
+       };
+     }).filter(n => n.texto);
 
-    // Datos del contacto embebido (sin llamada extra)
-    const contactoEmb = l._embedded?.contacts?.[0] || null;
-
-    // Intentar obtener teléfono/email del contacto (opcional, no bloquea)
-    let contacto = contactoEmb ? { id: contactoEmb.id, nombre: contactoEmb.name, telefono: null, email: null } : null;
-    if (contactoEmb?.id) {
-      try {
-        const cr = await client.get(`/api/v4/contacts/${contactoEmb.id}`);
-        const cf = cr.data?.custom_fields_values || [];
+    // Contacto
+    let contacto = null;
+    const contactoEmb = l._embedded?.contacts?.[0];
+    if (contactoEmb) {
+      contacto = { id: contactoEmb.id, nombre: contactoEmb.name, telefono: null, email: null };
+      if (contactosR.status === 'fulfilled' && contactosR.value) {
+        const cf = contactosR.value.data?.custom_fields_values || [];
         contacto.telefono = cf.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null;
         contacto.email    = cf.find(f => f.field_code === 'EMAIL')?.values?.[0]?.value  || null;
-      } catch {}
+      }
     }
 
     res.json({
@@ -106,15 +110,17 @@ async function obtenerLeadDetalle(req, res) {
       valor:       l.price || 0,
       status_id:   l.status_id,
       pipeline_id: l.pipeline_id,
-      pipeline:    l._embedded?.pipelines?.[0]?.name || l._embedded?.pipeline?.name || null,
       contacto,
       creado_en:   l.created_at ? new Date(l.created_at * 1000).toISOString() : null,
       actualizado: l.updated_at ? new Date(l.updated_at * 1000).toISOString() : null,
       notas,
     });
+
   } catch (err) {
-    console.error('[LEAD DETALLE]', err.message);
-    res.status(500).json({ error: 'Error cargando lead: ' + err.message });
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[LEAD DETALLE] Error lead ${id}: HTTP ${status} — ${detail}`);
+    res.status(500).json({ error: `Error cargando lead: HTTP ${status || '?'} — ${err.message}` });
   }
 }
 
@@ -127,8 +133,8 @@ async function actualizarEtapa(req, res) {
     await http().patch('/api/v4/leads', payload);
     res.json({ ok: true });
   } catch (err) {
-    console.error('[LEAD STATUS]', err.message);
-    res.status(500).json({ error: 'Error actualizando etapa: ' + err.message });
+    console.error('[LEAD STATUS]', err.response?.status, err.message);
+    res.status(500).json({ error: 'Error actualizando etapa' });
   }
 }
 
@@ -144,7 +150,7 @@ async function agregarNota(req, res) {
     res.json({ ok: true });
   } catch (err) {
     console.error('[NOTA]', err.message);
-    res.status(500).json({ error: 'Error agregando nota: ' + err.message });
+    res.status(500).json({ error: 'Error agregando nota' });
   }
 }
 
