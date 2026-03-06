@@ -261,12 +261,37 @@ async function responderManual(req, res) {
       console.log(`[REPLY] Sin teléfono — solo nota en Kommo`);
     }
 
-    // Siempre registrar en Kommo como nota saliente para que quede en el CRM
+    // Registrar en Kommo — intentar como Talk saliente (aparece en sección Mensajes)
+    // Para eso necesitamos el talk_id del último SMS recibido del cliente
+    let kommoOk = false;
     try {
-      await http.post(`/api/v4/leads/${leadId}/notes`, [{ note_type: 'common', params: { text: `📱 ${texto}` } }]);
-      console.log(`[REPLY] Nota registrada en Kommo para lead ${leadId}`);
+      const notasResp = await http.get(`/api/v4/leads/${leadId}/notes`, { params: { limit: 50 } });
+      const todasNotas = notasResp.data?._embedded?.notes || [];
+      const ultimaTalk = todasNotas
+        .filter(n => Number(n.note_type) === 102 && n.params?.talk_id)
+        .sort((a, b) => b.created_at - a.created_at)[0];
+      const talkId = ultimaTalk?.params?.talk_id;
+
+      if (talkId) {
+        await http.post(`/api/v4/leads/${leadId}/notes`, [{
+          note_type: 103,
+          params: { talk_id: Number(talkId), text: texto }
+        }]);
+        console.log(`[REPLY] Enviado como Talk saliente (tipo 103, talk_id: ${talkId}) en lead ${leadId}`);
+        kommoOk = true;
+      }
     } catch (e) {
-      console.error(`[REPLY] Error creando nota en Kommo:`, e.response?.status, e.response?.data || e.message);
+      console.log(`[REPLY] Talk 103 falló (${e.response?.status}):`, e.response?.data || e.message);
+    }
+
+    // Fallback: nota común si Talk no funcionó
+    if (!kommoOk) {
+      try {
+        await http.post(`/api/v4/leads/${leadId}/notes`, [{ note_type: 'common', params: { text: `📱 SMS enviado:\n\n${texto}` } }]);
+        console.log(`[REPLY] Nota común registrada en Kommo para lead ${leadId}`);
+      } catch (e) {
+        console.error(`[REPLY] Error creando nota en Kommo:`, e.response?.status, e.response?.data || e.message);
+      }
     }
 
     await pool.query(
