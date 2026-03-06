@@ -32,23 +32,30 @@ async function manejarWebhook(req, res) {
       console.log('[WEBHOOK] Formato Twilio detectado');
 
     } else if (notaKommo) {
-      const tipo = notaKommo.note_type;
-      // Tipos aceptados:
-      //  4  = nota común
-      // 25  = mensaje WhatsApp entrante
-      // 102 = mensaje de chat entrante (Kommo Talk)
-      if (!['4', '25', '102'].includes(String(tipo))) {
-        console.log(`[WEBHOOK] Nota tipo ${tipo}, ignorando`);
+      const tipo = String(notaKommo.note_type);
+
+      // Tipos SALIENTES — ignorar para no crear bucles de respuesta
+      // 26 = WhatsApp/SMS saliente, 103 = Kommo Talk saliente
+      const SALIENTES = ['26', '103'];
+      if (SALIENTES.includes(tipo)) {
+        console.log(`[WEBHOOK] Mensaje saliente tipo ${tipo}, ignorando`);
         return;
       }
-      // Ignorar mensajes salientes (tipo 26 = WhatsApp saliente)
-      if (String(tipo) === '26') {
-        console.log('[WEBHOOK] Mensaje WhatsApp saliente, ignorando');
+
+      // Tipos ENTRANTES aceptados:
+      //  4  = nota común (agente escribe manualmente — ignorar para no auto-responder notas internas)
+      // 25  = mensaje entrante (WhatsApp, SMS, cualquier canal externo)
+      // 102 = Kommo Talk / SMS entrante
+      // Si en el futuro aparece otro tipo entrante con texto, se aceptará igual
+      const ENTRANTES_ACEPTADOS = ['25', '102'];
+      if (!ENTRANTES_ACEPTADOS.includes(tipo)) {
+        console.log(`[WEBHOOK] Nota tipo ${tipo} no es mensaje entrante de cliente, ignorando`);
         return;
       }
+
       textoMensaje = notaKommo.text || notaKommo.params?.text;
       leadId = String(notaKommo.element_id || '');
-      console.log(`[WEBHOOK] Nota Kommo tipo ${tipo} detectada`);
+      console.log(`[WEBHOOK] Mensaje entrante tipo ${tipo} detectado`);
 
     } else {
       console.log('[WEBHOOK] Formato de payload no reconocido, ignorando');
