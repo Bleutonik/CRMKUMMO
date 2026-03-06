@@ -1,5 +1,4 @@
 import './globals.css';
-import LayoutWrapper from '../components/LayoutWrapper';
 
 export const metadata = {
   title: 'CRM AI Bot — Dashboard',
@@ -10,7 +9,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="es">
       <body style={{ background: '#07101f', margin: 0 }}>
-        <LayoutWrapper>{children}</LayoutWrapper>
+        {children}
       </body>
     </html>
   );
