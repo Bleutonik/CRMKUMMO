@@ -203,13 +203,22 @@ async function sincronizarContactos(req, res) {
 // Obtiene el teléfono del contacto asociado a un lead
 async function obtenerTelefonoLead(http, leadId) {
   try {
-    const respLead = await http.get(`/api/v4/leads/${leadId}`);
-    const contactoId = respLead.data._embedded?.contacts?.[0]?.id;
-    if (!contactoId) return null;
+    // with=contacts es necesario para que Kommo devuelva los contactos embebidos
+    const respLead = await http.get(`/api/v4/leads/${leadId}?with=contacts`);
+    const contactos = respLead.data._embedded?.contacts;
+    console.log(`[REPLY] Contactos embebidos en lead ${leadId}:`, JSON.stringify(contactos));
+    const contactoId = contactos?.[0]?.id;
+    if (!contactoId) {
+      console.log(`[REPLY] Lead ${leadId} sin contacto asociado`);
+      return null;
+    }
     const respContacto = await http.get(`/api/v4/contacts/${contactoId}`);
     const campos = respContacto.data.custom_fields_values || [];
-    return campos.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null;
-  } catch {
+    console.log(`[REPLY] Campos contacto ${contactoId}:`, JSON.stringify(campos.map(f => ({ code: f.field_code, val: f.values?.[0]?.value }))));
+    const telefono = campos.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null;
+    return telefono;
+  } catch (e) {
+    console.error(`[REPLY] Error obteniendo teléfono del lead ${leadId}:`, e.response?.status, e.message);
     return null;
   }
 }
