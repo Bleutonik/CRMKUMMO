@@ -144,6 +144,7 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
   }
 
   try {
+    console.log('[AI] Iniciando generarRespuestaAI para lead:', contexto.leadId);
     const [promptSistema, conocimientoGeneral, historial, ejemplos, conocimientoRelevante] = await Promise.all([
       obtenerPromptSistema(),
       obtenerConocimiento(),
@@ -151,6 +152,7 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
       obtenerEjemplosRelevantes(mensaje, contexto.leadId),
       obtenerConocimientoRelevante(mensaje)
     ]);
+    console.log('[AI] Contexto cargado. Llamando a Claude...');
 
     // Construir contexto completo del lead/contacto
     let contextoTexto = '';
@@ -182,8 +184,8 @@ async function generarRespuestaAI(mensaje, contexto = {}) {
     return respuesta.content[0].text;
 
   } catch (error) {
-    console.error('[AI] Error generando respuesta:', error.message);
-    return 'Gracias por tu mensaje. Un agente te responderá pronto.';
+    console.error('[AI] Error tipo:', error.constructor?.name, '| Mensaje:', error.message);
+    throw error; // re-lanzar para que probarBot lo capture y loguee completo
   }
 }
 
