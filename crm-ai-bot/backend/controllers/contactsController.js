@@ -199,6 +199,21 @@ async function sincronizarContactos(req, res) {
   }
 }
 
+// Obtiene el talk_id más reciente del lead buscando en sus notas tipo 102 (Talk entrante)
+async function obtenerTalkId(http, leadId) {
+  try {
+    const resp = await http.get(`/api/v4/leads/${leadId}/notes`, { params: { limit: 50 } });
+    const notas = resp.data?._embedded?.notes || [];
+    // Buscar la nota más reciente de tipo 102 (SMS entrante) que tenga talk_id
+    const nota102 = notas
+      .filter(n => Number(n.note_type) === 102 && n.params?.talk_id)
+      .sort((a, b) => b.created_at - a.created_at)[0];
+    return nota102?.params?.talk_id || null;
+  } catch {
+    return null;
+  }
+}
+
 // POST /api/reply  { leadId, mensaje }
 async function responderManual(req, res) {
   try {
@@ -209,11 +224,25 @@ async function responderManual(req, res) {
 
     const http = kommoHttp();
 
-    // note_type 103 = Kommo Talk outgoing — envía como mensaje de texto al cliente
-    await http.post(`/api/v4/leads/${leadId}/notes`, [{
-      note_type: 103,
-      params: { text: mensaje.trim() }
-    }]);
+    // Intentar enviar como mensaje de texto (Talk) con el talk_id de la última conversación
+    const talkId = await obtenerTalkId(http, leadId);
+    console.log(`[REPLY] lead ${leadId} — talk_id: ${talkId}`);
+
+    if (talkId) {
+      // note_type 103 = Kommo Talk outgoing (SMS al cliente)
+      await http.post(`/api/v4/leads/${leadId}/notes`, [{
+        note_type: 103,
+        params: { talk_id: Number(talkId), text: mensaje.trim() }
+      }]);
+      console.log(`[REPLY] Mensaje SMS enviado via Talk al lead ${leadId}`);
+    } else {
+      // Sin Talk activo: usar nota común como fallback
+      console.log(`[REPLY] Sin talk_id — usando nota común como fallback`);
+      await http.post(`/api/v4/leads/${leadId}/notes`, [{
+        note_type: 'common',
+        params: { text: mensaje.trim() }
+      }]);
+    }
 
     await pool.query(
       `INSERT INTO conversations (lead_id, contact_name, mensaje_cliente, respuesta_bot, timestamp)
@@ -221,7 +250,7 @@ async function responderManual(req, res) {
       [String(leadId), null, '[Respuesta manual desde dashboard]', mensaje.trim()]
     );
 
-    res.json({ ok: true });
+    res.json({ ok: true, viaTalk: !!talkId });
   } catch (err) {
     console.error('[REPLY]', err.message);
     res.status(500).json({ error: 'Error enviando respuesta: ' + err.message });
