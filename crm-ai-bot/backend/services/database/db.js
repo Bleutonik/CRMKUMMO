@@ -93,7 +93,6 @@ async function inicializarDB() {
       CREATE INDEX IF NOT EXISTS idx_conversations_lead_id ON conversations(lead_id);
     `);
 
-    // Prompt del sistema por defecto
     await cliente.query(`
       INSERT INTO configuracion (clave, valor, descripcion)
       VALUES (
@@ -104,14 +103,13 @@ async function inicializarDB() {
       ON CONFLICT (clave) DO NOTHING
     `);
 
-    // Estado del bot por defecto
+    // Bot OFF por defecto — activar manualmente desde el dashboard cuando esté listo
     await cliente.query(`
       INSERT INTO configuracion (clave, valor, descripcion)
-      VALUES ('bot_activo', 'true', 'Estado del bot (true/false)')
+      VALUES ('bot_activo', 'false', 'Estado del bot (true/false)')
       ON CONFLICT (clave) DO NOTHING
     `);
 
-    // Índices para mejorar rendimiento
     await cliente.query(`
       CREATE INDEX IF NOT EXISTS idx_mensajes_conversacion_id ON mensajes(conversacion_id);
       CREATE INDEX IF NOT EXISTS idx_conversaciones_kommo_lead_id ON conversaciones(kommo_lead_id);

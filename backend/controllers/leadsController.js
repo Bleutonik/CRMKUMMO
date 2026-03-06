@@ -13,38 +13,34 @@ function http() {
   });
 }
 
-// GET /api/leads-crm?search=&pipeline=&status=&page=
+// GET /api/leads-crm?search=&pipeline=&page=
 async function obtenerLeadsCRM(req, res) {
   try {
-    const { search = '', pipeline = '', status = '', page = 1 } = req.query;
-    const params = { limit: 50, page: Number(page), with: 'contacts,pipeline,loss_reason' };
+    const { search = '', pipeline = '', page = 1 } = req.query;
+    const params = { limit: 50, page: Number(page), with: 'contacts,pipeline' };
     if (search)   params.query = search;
     if (pipeline) params.pipeline_id = pipeline;
-    if (status)   params.status = status;
 
     const r = await http().get('/api/v4/leads', { params });
     const leads = r.data?._embedded?.leads || [];
 
     const resultado = leads.map(l => ({
-      id:            l.id,
-      nombre:        l.name,
-      valor:         l.price || 0,
-      status_id:     l.status_id,
-      pipeline_id:   l.pipeline_id,
-      pipeline:      l._embedded?.pipeline?.name || null,
-      etapa:         l._embedded?.stages?.name || null,
-      contacto:      l._embedded?.contacts?.[0]?.name || null,
-      contacto_id:   l._embedded?.contacts?.[0]?.id || null,
-      responsable:   l.responsible_user_id,
-      creado_en:     l.created_at ? new Date(l.created_at * 1000).toISOString() : null,
-      actualizado:   l.updated_at ? new Date(l.updated_at * 1000).toISOString() : null,
-      cerrado_en:    l.closed_at  ? new Date(l.closed_at  * 1000).toISOString() : null,
+      id:          l.id,
+      nombre:      l.name,
+      valor:       l.price || 0,
+      status_id:   l.status_id,
+      pipeline_id: l.pipeline_id,
+      pipeline:    l._embedded?.pipelines?.[0]?.name || l._embedded?.pipeline?.name || null,
+      contacto:    l._embedded?.contacts?.[0]?.name || null,
+      contacto_id: l._embedded?.contacts?.[0]?.id || null,
+      creado_en:   l.created_at ? new Date(l.created_at * 1000).toISOString() : null,
+      actualizado: l.updated_at ? new Date(l.updated_at * 1000).toISOString() : null,
     }));
 
     res.json({ leads: resultado, total: resultado.length });
   } catch (err) {
     console.error('[LEADS]', err.message);
-    res.status(500).json({ error: 'Error obteniendo leads' });
+    res.status(500).json({ error: 'Error obteniendo leads: ' + err.message });
   }
 }
 
@@ -63,25 +59,45 @@ async function obtenerPipelines(req, res) {
 // GET /api/leads-crm/:id
 async function obtenerLeadDetalle(req, res) {
   try {
-    const r = await http().get(`/api/v4/leads/${req.params.id}?with=contacts,pipeline,loss_reason`);
-    const l = r.data;
-    const notasR = await http().get(`/api/v4/leads/${req.params.id}/notes?limit=50`).catch(() => ({ data: null }));
-    const notas = notasR.data?._embedded?.notes || [];
+    const id = req.params.id;
+    const client = http();
 
-    const campos = l.custom_fields_values || [];
-    const contactoId = l._embedded?.contacts?.[0]?.id;
-    let contacto = null;
-    if (contactoId) {
-      const cr = await http().get(`/api/v4/contacts/${contactoId}`).catch(() => ({ data: null }));
-      if (cr.data) {
-        const cf = cr.data.custom_fields_values || [];
-        contacto = {
-          id:       cr.data.id,
-          nombre:   cr.data.name,
-          telefono: cf.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null,
-          email:    cf.find(f => f.field_code === 'EMAIL')?.values?.[0]?.value  || null,
+    // Obtener lead y notas en paralelo
+    const [leadR, notasR] = await Promise.all([
+      client.get(`/api/v4/leads/${id}`, { params: { with: 'contacts,pipeline' } }),
+      client.get(`/api/v4/leads/${id}/notes`, { params: { limit: 50 } }).catch(() => ({ data: null }))
+    ]);
+
+    const l = leadR.data;
+    const notas = (notasR.data?._embedded?.notes || [])
+      .sort((a, b) => b.created_at - a.created_at)
+      .map(n => {
+        let textoNota = n.params?.text || null;
+        // Si es JSON (email tipo 15), extraer resumen
+        if (typeof textoNota === 'string' && textoNota.startsWith('{')) {
+          try { textoNota = JSON.parse(textoNota).content_summary || textoNota; } catch {}
+        }
+        return {
+          id:        n.id,
+          tipo:      n.note_type,
+          texto:     textoNota,
+          creado_en: n.created_at ? new Date(n.created_at * 1000).toISOString() : null,
         };
-      }
+      })
+      .filter(n => n.texto);
+
+    // Datos del contacto embebido (sin llamada extra)
+    const contactoEmb = l._embedded?.contacts?.[0] || null;
+
+    // Intentar obtener teléfono/email del contacto (opcional, no bloquea)
+    let contacto = contactoEmb ? { id: contactoEmb.id, nombre: contactoEmb.name, telefono: null, email: null } : null;
+    if (contactoEmb?.id) {
+      try {
+        const cr = await client.get(`/api/v4/contacts/${contactoEmb.id}`);
+        const cf = cr.data?.custom_fields_values || [];
+        contacto.telefono = cf.find(f => f.field_code === 'PHONE')?.values?.[0]?.value || null;
+        contacto.email    = cf.find(f => f.field_code === 'EMAIL')?.values?.[0]?.value  || null;
+      } catch {}
     }
 
     res.json({
@@ -90,41 +106,33 @@ async function obtenerLeadDetalle(req, res) {
       valor:       l.price || 0,
       status_id:   l.status_id,
       pipeline_id: l.pipeline_id,
-      pipeline:    l._embedded?.pipeline?.name || null,
-      etapa:       l._embedded?.stages?.name || null,
+      pipeline:    l._embedded?.pipelines?.[0]?.name || l._embedded?.pipeline?.name || null,
       contacto,
       creado_en:   l.created_at ? new Date(l.created_at * 1000).toISOString() : null,
       actualizado: l.updated_at ? new Date(l.updated_at * 1000).toISOString() : null,
-      notas: notas
-        .sort((a, b) => b.created_at - a.created_at)
-        .map(n => ({
-          id:        n.id,
-          tipo:      n.note_type,
-          texto:     n.params?.text || null,
-          creado_en: n.created_at ? new Date(n.created_at * 1000).toISOString() : null,
-        })),
+      notas,
     });
   } catch (err) {
     console.error('[LEAD DETALLE]', err.message);
-    res.status(500).json({ error: 'Error obteniendo lead' });
+    res.status(500).json({ error: 'Error cargando lead: ' + err.message });
   }
 }
 
-// PATCH /api/leads-crm/:id/status  { status_id }
+// PATCH /api/leads-crm/:id/status
 async function actualizarEtapa(req, res) {
   try {
     const { status_id, pipeline_id } = req.body;
-    const payload = { status_id };
-    if (pipeline_id) payload.pipeline_id = pipeline_id;
-    await http().patch(`/api/v4/leads`, [{ id: Number(req.params.id), ...payload }]);
+    const payload = [{ id: Number(req.params.id), status_id }];
+    if (pipeline_id) payload[0].pipeline_id = pipeline_id;
+    await http().patch('/api/v4/leads', payload);
     res.json({ ok: true });
   } catch (err) {
     console.error('[LEAD STATUS]', err.message);
-    res.status(500).json({ error: 'Error actualizando etapa' });
+    res.status(500).json({ error: 'Error actualizando etapa: ' + err.message });
   }
 }
 
-// POST /api/leads-crm/:id/note  { texto }
+// POST /api/leads-crm/:id/note
 async function agregarNota(req, res) {
   try {
     const { texto } = req.body;
@@ -136,7 +144,7 @@ async function agregarNota(req, res) {
     res.json({ ok: true });
   } catch (err) {
     console.error('[NOTA]', err.message);
-    res.status(500).json({ error: 'Error agregando nota' });
+    res.status(500).json({ error: 'Error agregando nota: ' + err.message });
   }
 }
 
