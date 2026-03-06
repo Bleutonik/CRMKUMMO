@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../../../lib/api';
 
 function StatCard({ label, value, color, icon }) {
@@ -56,6 +56,41 @@ export default function BotPage() {
   const [cargando, setCargando] = useState(true);
   const [toggling, setToggling] = useState(false);
 
+  // Prompt del sistema
+  const [prompt, setPrompt] = useState('');
+  const [promptOriginal, setPromptOriginal] = useState('');
+  const [guardandoPrompt, setGuardandoPrompt] = useState(false);
+  const [promptMsg, setPromptMsg] = useState(null);
+
+  const PROMPT_DEFAULT = `Eres el asistente virtual de Fix A Trip, una agencia de viajes en Puerto Rico. Tu objetivo es ayudar a los clientes a planificar y reservar sus viajes de forma rápida y profesional.
+
+CÓMO COMPORTARTE:
+- Responde siempre en el mismo idioma que el cliente (español o inglés)
+- Sé amigable, conciso y orientado a cerrar la venta
+- Haz preguntas específicas para entender qué necesita el cliente: destino, fechas, número de personas, presupuesto
+- Si tienes la información, da precios y disponibilidad directamente
+- Si no tienes el detalle exacto, ofrece que un agente lo contacte pronto
+- No inventes precios ni disponibilidad que no conozcas
+- Cuando el cliente está listo, guíalo para hacer la reserva o dejar sus datos de contacto
+
+SERVICIOS DE FIX A TRIP:
+- Paquetes de viaje a destinos nacionales e internacionales
+- Tours y excursiones en Puerto Rico y el Caribe
+- Vuelos, hoteles y traslados
+- Viajes en crucero
+- Viajes en grupo y corporativos
+
+Responde de manera natural y profesional, como lo haría un asesor de viajes experimentado.`;
+
+  const cargarConfig = useCallback(async () => {
+    try {
+      const data = await api.getConfig();
+      const p = data.configuracion?.find(c => c.clave === 'prompt_sistema')?.valor || PROMPT_DEFAULT;
+      setPrompt(p);
+      setPromptOriginal(p);
+    } catch {}
+  }, []);
+
   // Chat de prueba
   const [mensajes, setMensajes] = useState([
     { rol: 'bot', texto: 'Hola, soy el asistente IA de Fix A Trip. Escríbeme algo para probar cómo respondería a un cliente real.' }
@@ -65,11 +100,25 @@ export default function BotPage() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    Promise.all([api.botStatus(), api.stats()])
+    Promise.all([api.botStatus(), api.stats(), cargarConfig()])
       .then(([bot, s]) => { setActivo(bot.activo); setStats(s.resumen); })
       .catch(console.error)
       .finally(() => setCargando(false));
-  }, []);
+  }, [cargarConfig]);
+
+  const guardarPrompt = async () => {
+    setGuardandoPrompt(true);
+    setPromptMsg(null);
+    try {
+      await api.updatePrompt(prompt);
+      setPromptOriginal(prompt);
+      setPromptMsg({ ok: true, texto: 'Prompt guardado. El bot usará estas instrucciones en su próxima respuesta.' });
+      setTimeout(() => setPromptMsg(null), 4000);
+    } catch (e) {
+      setPromptMsg({ ok: false, texto: e.message });
+    }
+    setGuardandoPrompt(false);
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -200,6 +249,47 @@ export default function BotPage() {
             </>
           ) : null}
         </div>
+      </div>
+
+      {/* Editor de prompt */}
+      <div className="card mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Instrucciones del bot (System Prompt)</h2>
+            <p className="text-xs text-muted mt-0.5">Define cómo se comporta el asistente con los clientes.</p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            {prompt !== promptOriginal && (
+              <button onClick={() => setPrompt(promptOriginal)}
+                className="text-xs text-muted hover:text-white px-3 py-1.5 rounded-lg border border-border hover:border-border/80 transition-colors">
+                Descartar
+              </button>
+            )}
+            <button
+              onClick={guardarPrompt}
+              disabled={guardandoPrompt || prompt === promptOriginal}
+              className="btn-primary text-xs py-1.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {guardandoPrompt ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          rows={10}
+          className="input w-full resize-y text-xs leading-relaxed font-mono"
+          placeholder="Escribe las instrucciones del bot..."
+        />
+
+        {promptMsg && (
+          <div className={`mt-3 px-4 py-2.5 rounded-lg text-xs ${promptMsg.ok
+            ? 'bg-success/10 border border-success/20 text-success'
+            : 'bg-danger/10 border border-danger/20 text-danger'}`}>
+            {promptMsg.texto}
+          </div>
+        )}
       </div>
 
       {/* Chat de prueba */}

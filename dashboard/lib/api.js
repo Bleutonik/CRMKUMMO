@@ -40,6 +40,8 @@ async function req(ruta, opciones = {}, timeoutMs = 10000) {
 
 export const api = {
   // Bot
+  getConfig:        ()              => req('/api/configuracion'),
+  updatePrompt:     (valor)         => req('/api/prompts', { method: 'POST', body: JSON.stringify({ clave: 'prompt_sistema', valor }) }),
   botStatus:        ()              => req('/api/bot-status'),
   botToggle:        ()              => req('/api/bot-toggle', { method: 'POST' }),
   botTest:          (msg)           => req('/api/bot-test', { method: 'POST', body: JSON.stringify({ mensaje: msg }) }, 45000),
