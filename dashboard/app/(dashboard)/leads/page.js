@@ -80,10 +80,64 @@ function NoteModal({ lead, onClose }) {
   );
 }
 
+function MensajeModal({ lead, onClose, onEnviado }) {
+  const [texto, setTexto] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const enviar = async () => {
+    if (!texto.trim()) return;
+    setEnviando(true); setErr(null);
+    try {
+      await api.reply(lead.id, texto.trim());
+      setOk(true);
+      if (onEnviado) onEnviado(texto.trim());
+      setTimeout(onClose, 1500);
+    } catch (e) { setErr(e.message); }
+    setEnviando(false);
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-1">
+          <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <h3 className="text-white font-semibold">Enviar mensaje de texto</h3>
+        </div>
+        <p className="text-xs text-muted mb-4">Lead #{lead.id} — {lead.nombre}</p>
+        <textarea
+          autoFocus rows={4}
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="Escribe tu mensaje... (Enter para enviar)"
+          className="input w-full resize-none mb-3"
+        />
+        {ok  && <p className="text-sm mb-3" style={{ color: '#34d399' }}>Mensaje enviado</p>}
+        {err && <p className="text-danger text-sm mb-3">{err}</p>}
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="btn-ghost text-sm">Cancelar</button>
+          <button onClick={enviar} disabled={enviando || !texto.trim()} className="btn-primary text-sm disabled:opacity-50">
+            {enviando ? 'Enviando...' : 'Enviar SMS'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LeadDetalle({ id, onClose }) {
   const [lead, setLead] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [notaModal, setNotaModal] = useState(false);
+  const [mensajeModal, setMensajeModal] = useState(false);
   const [pipelines, setPipelines] = useState([]);
   const [cambiandoEtapa, setCambiandoEtapa] = useState(false);
 
@@ -146,6 +200,12 @@ function LeadDetalle({ id, onClose }) {
                   )}
                 </div>
                 <div className="flex gap-2 items-start">
+                  <button onClick={() => setMensajeModal(true)} className="btn-primary text-xs flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Mensaje
+                  </button>
                   <button onClick={() => setNotaModal(true)} className="btn-ghost text-xs flex items-center gap-1.5">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -236,6 +296,23 @@ function LeadDetalle({ id, onClose }) {
         )}
       </div>
       {notaModal && lead && <NoteModal lead={lead} onClose={() => setNotaModal(false)} />}
+      {mensajeModal && lead && (
+        <MensajeModal
+          lead={lead}
+          onClose={() => setMensajeModal(false)}
+          onEnviado={(texto) => {
+            // Agregar el mensaje enviado al chat localmente sin recargar
+            const nuevaNota = {
+              id: Date.now(),
+              tipo: 103,
+              rol: 'agente',
+              texto,
+              creado_en: new Date().toISOString(),
+            };
+            setLead(prev => ({ ...prev, notas: [...(prev.notas || []), nuevaNota] }));
+          }}
+        />
+      )}
     </div>
   );
 }
