@@ -48,4 +48,8 @@ const { importarHistorial, extraerConocimiento } = require('../controllers/admin
 router.post('/admin/import-kommo', importarHistorial);
 router.post('/admin/extract-knowledge', extraerConocimiento);
 
+// Entrenamiento directo desde Kommo (sin guardar conversaciones)
+const { entrenarDesdeKommo } = require('../controllers/trainController');
+router.post('/admin/train-from-kommo', entrenarDesdeKommo);
+
 module.exports = router;

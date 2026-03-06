@@ -33,5 +33,6 @@ export const api = {
   eliminarKnowledge:  (id)       => req(`/api/knowledge/${id}`, { method: 'DELETE' }),
   stats:              ()         => req('/api/stats'),
   importarKommo:      ()         => req('/api/admin/import-kommo',      { method: 'POST' }),
-  extraerKnowledge:   ()         => req('/api/admin/extract-knowledge',  { method: 'POST' })
+  extraerKnowledge:   ()         => req('/api/admin/extract-knowledge',  { method: 'POST' }),
+  entrenarKommo:      ()         => req('/api/admin/train-from-kommo',   { method: 'POST' })
 };
