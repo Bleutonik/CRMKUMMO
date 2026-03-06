@@ -37,21 +37,39 @@ async function manejarWebhook(req, res) {
     } else if (notaKommo) {
       const tipo = String(notaKommo.note_type);
 
-      // Tipos SALIENTES — ignorar para no crear bucles de respuesta
-      // 26 = WhatsApp/SMS saliente, 103 = Kommo Talk saliente
-      const SALIENTES = ['26', '103'];
-      if (SALIENTES.includes(tipo)) {
-        console.log(`[WEBHOOK] Mensaje saliente tipo ${tipo}, ignorando`);
+      // Detectar si la nota la creó nuestro bot (para evitar bucles)
+      let esDelBot = false;
+      try {
+        const meta = JSON.parse(notaKommo.metadata || '{}');
+        esDelBot = meta?.event_source?.author_name === 'AI CRM Bot';
+      } catch {}
+      const textoNota = notaKommo.text || notaKommo.params?.text || '';
+      if (!esDelBot && textoNota.startsWith('📱 ')) esDelBot = true; // nuestro reply manual
+      if (!esDelBot && textoNota.startsWith('🤖 Asistente IA:')) esDelBot = true;
+
+      // SALIENTES (26/103) y notas internas (4) de agentes humanos — guardar en DB, NO responder
+      const SALIENTES_Y_NOTAS = ['26', '103', '4'];
+      if (SALIENTES_Y_NOTAS.includes(tipo)) {
+        if (esDelBot) {
+          console.log(`[WEBHOOK] Nota tipo ${tipo} del bot, ignorando`);
+          return;
+        }
+        // Es un mensaje enviado por un agente humano desde Kommo — guardarlo en el dashboard
+        const lId = String(notaKommo.element_id || '');
+        if (lId && textoNota) {
+          await pool.query(
+            `INSERT INTO conversations (lead_id, mensaje_cliente, respuesta_bot, timestamp) VALUES ($1, NULL, $2, NOW())`,
+            [lId, textoNota]
+          ).catch(() => {});
+          console.log(`[WEBHOOK] Mensaje de agente (tipo ${tipo}) guardado en DB para lead ${lId}`);
+        }
         return;
       }
 
-      // Tipos ENTRANTES aceptados:
-      //  4  = nota común (agente escribe manualmente — ignorar para no auto-responder notas internas)
-      // 25  = mensaje entrante (WhatsApp, SMS, cualquier canal externo)
-      // 102 = Kommo Talk / SMS entrante
+      // ENTRANTES de cliente: 25 = WhatsApp/SMS entrante, 102 = Kommo Talk entrante
       const ENTRANTES_ACEPTADOS = ['25', '102'];
       if (!ENTRANTES_ACEPTADOS.includes(tipo)) {
-        console.log(`[WEBHOOK] Nota tipo ${tipo} no es mensaje entrante de cliente, ignorando`);
+        console.log(`[WEBHOOK] Nota tipo ${tipo} ignorada`);
         return;
       }
 
