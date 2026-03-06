@@ -9,22 +9,51 @@ function http() {
   return axios.create({
     baseURL: BASE_URL,
     headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    timeout: 10000
+    timeout: 15000
   });
 }
 
-// GET /api/leads-crm?search=&pipeline=&page=
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function kommoGet(client, url, params = {}, reintentos = 3) {
+  for (let i = 0; i <= reintentos; i++) {
+    try {
+      return await client.get(url, { params });
+    } catch (e) {
+      if (e.response?.status === 429 && i < reintentos) {
+        await sleep(1000 * (i + 1));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+// GET /api/leads-crm?search=&pipeline=&page=all
 async function obtenerLeadsCRM(req, res) {
   try {
-    const { search = '', pipeline = '', page = 1 } = req.query;
-    const params = { limit: 250, page: Number(page), with: 'contacts,pipeline' };
-    if (search)   params.query = search;
-    if (pipeline) params.pipeline_id = pipeline;
+    const { search = '', pipeline = '' } = req.query;
+    const client = http();
+    const todos = [];
+    let pagina = 1;
 
-    const r = await http().get('/api/v4/leads', { params });
-    const leads = r.data?._embedded?.leads || [];
+    while (true) {
+      const params = { limit: 250, page: pagina, with: 'contacts,pipeline' };
+      if (search)   params.query = search;
+      if (pipeline) params.pipeline_id = pipeline;
 
-    const resultado = leads.map(l => ({
+      const r = await kommoGet(client, '/api/v4/leads', params);
+      const lote = r.data?._embedded?.leads || [];
+      todos.push(...lote);
+
+      // Si hay búsqueda o pipeline, no paginamos (resultado acotado)
+      if (search || pipeline || lote.length < 250) break;
+
+      pagina++;
+      await sleep(200); // respetar rate limit entre páginas
+    }
+
+    const resultado = todos.map(l => ({
       id:          l.id,
       nombre:      l.name,
       valor:       l.price || 0,
@@ -37,6 +66,7 @@ async function obtenerLeadsCRM(req, res) {
       actualizado: l.updated_at ? new Date(l.updated_at * 1000).toISOString() : null,
     }));
 
+    console.log(`[LEADS] Cargados ${resultado.length} leads (${pagina} páginas)`);
     res.json({ leads: resultado, total: resultado.length });
   } catch (err) {
     console.error('[LEADS]', err.response?.status, err.message);
@@ -48,13 +78,12 @@ async function obtenerLeadsCRM(req, res) {
 async function obtenerPipelines(req, res) {
   try {
     const client = http();
-    const r = await client.get('/api/v4/leads/pipelines');
+    const r = await kommoGet(client, '/api/v4/leads/pipelines');
     const pipelines = r.data?._embedded?.pipelines || [];
 
-    // Fetch statuses for each pipeline separately
     const withStatuses = await Promise.all(pipelines.map(async (pip) => {
       try {
-        const sr = await client.get(`/api/v4/leads/pipelines/${pip.id}/statuses`);
+        const sr = await kommoGet(client, `/api/v4/leads/pipelines/${pip.id}/statuses`);
         const statuses = sr.data?._embedded?.statuses || [];
         const statusMap = {};
         statuses.forEach(s => { statusMap[s.id] = s; });
@@ -80,16 +109,14 @@ async function obtenerLeadDetalle(req, res) {
   console.log(`[LEAD DETALLE] Fetching lead ${id}`);
 
   try {
-    // 1. Lead básico (sin with para evitar errores)
-    const leadR = await client.get(`/api/v4/leads/${id}`);
+    const leadR = await kommoGet(client, `/api/v4/leads/${id}`);
     const l = leadR.data;
     console.log(`[LEAD DETALLE] Lead ${id} ok: ${l.name}`);
 
-    // 2. Notas y contactos en paralelo (opcionales)
     const [notasR, contactosR] = await Promise.allSettled([
-      client.get(`/api/v4/leads/${id}/notes?limit=50`),
+      kommoGet(client, `/api/v4/leads/${id}/notes`, { limit: 50 }),
       l._embedded?.contacts?.[0]?.id
-        ? client.get(`/api/v4/contacts/${l._embedded.contacts[0].id}`)
+        ? kommoGet(client, `/api/v4/contacts/${l._embedded.contacts[0].id}`)
         : Promise.resolve(null)
     ]);
 
@@ -110,7 +137,6 @@ async function obtenerLeadDetalle(req, res) {
        };
      }).filter(n => n.texto);
 
-    // Contacto
     let contacto = null;
     const contactoEmb = l._embedded?.contacts?.[0];
     if (contactoEmb) {
