@@ -8,7 +8,7 @@ const {
 } = require('../controllers/conversationController');
 const {
   obtenerEstadoBot, toggleBot, obtenerConversacionesPorPares,
-  obtenerConocimiento, crearConocimiento, eliminarConocimiento
+  obtenerConocimiento, crearConocimiento, eliminarConocimiento, probarBot
 } = require('../controllers/botController');
 
 // Auth (rutas públicas)
@@ -26,6 +26,7 @@ router.use(verificarToken);
 // Bot
 router.get('/bot-status', obtenerEstadoBot);
 router.post('/bot-toggle', toggleBot);
+router.post('/bot-test', probarBot);
 
 // Conversaciones
 router.get('/conversations', obtenerConversacionesPorPares);

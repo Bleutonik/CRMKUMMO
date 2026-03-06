@@ -1,4 +1,5 @@
 const { pool } = require('../services/database/db');
+const { generarRespuestaAI } = require('../services/ai/claudeService');
 
 async function obtenerEstadoBot(req, res) {
   try {
@@ -99,11 +100,28 @@ async function eliminarConocimiento(req, res) {
   }
 }
 
+async function probarBot(req, res) {
+  const { mensaje } = req.body;
+  if (!mensaje?.trim()) return res.status(400).json({ error: 'Mensaje requerido' });
+
+  try {
+    const respuesta = await generarRespuestaAI(mensaje.trim(), {
+      leadId: 'test',
+      contactName: 'Prueba'
+    });
+    res.json({ respuesta });
+  } catch (error) {
+    console.error('[BOT-TEST] Error:', error.message);
+    res.status(500).json({ error: 'Error generando respuesta' });
+  }
+}
+
 module.exports = {
   obtenerEstadoBot,
   toggleBot,
   obtenerConversacionesPorPares,
   obtenerConocimiento,
   crearConocimiento,
-  eliminarConocimiento
+  eliminarConocimiento,
+  probarBot
 };
